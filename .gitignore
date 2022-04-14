@@ -1,0 +1,10 @@
+.coverage
+.ipynb_checkpoints
+*.pyc
+*.egg-info
+.DS_Store
+*.sqlite3
+.idea
+venv
+volumes
+dist

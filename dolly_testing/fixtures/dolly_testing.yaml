@@ -1,0 +1,146 @@
+- model: dolly_testing.tag
+  pk: 1
+  fields:
+    name: stuff
+- model: dolly_testing.tag
+  pk: 2
+  fields:
+    name: fruit
+- model: dolly_testing.organisationrole
+  pk: 1
+  fields:
+    name: manager
+    user: 3
+    context: 1
+- model: dolly_testing.organisation
+  pk: 1
+  fields:
+    name: First organisation
+- model: dolly_testing.meetingrole
+  pk: 1
+  fields:
+    name: nice person
+    user: 3
+    context: 1
+- model: dolly_testing.meetingrole
+  pk: 2
+  fields:
+    name: important
+    user: 1
+    context: 1
+- model: dolly_testing.meeting
+  pk: 1
+  fields:
+    name: First meeting
+    author: null
+    organisation: 1
+    tags: []
+- model: dolly_testing.meetinggroup
+  pk: 1
+  fields:
+    name: The wailers
+    meeting: 1
+    members:
+    - 1
+    - 3
+- model: dolly_testing.agendaitem
+  pk: 1
+  fields:
+    name: Intro
+    author: null
+    meeting: 1
+    tags: []
+- model: dolly_testing.agendaitem
+  pk: 2
+  fields:
+    name: Stuff we do later
+    author: null
+    meeting: 1
+    tags: []
+- model: dolly_testing.proposal
+  pk: 1
+  fields:
+    name: Eat more veggies
+    author: 3
+    meeting: 1
+    agenda_item: 2
+    meeting_group: 1
+    tags:
+    - 2
+- model: dolly_testing.proposal
+  pk: 2
+  fields:
+    name: Change the charter
+    author: 1
+    meeting: 1
+    agenda_item: 2
+    meeting_group: null
+    tags:
+    - 1
+- model: dolly_testing.text
+  pk: 1
+  fields:
+    name: Charter
+    author: 3
+    text: This important text
+    agenda_item: 2
+    tags: []
+- model: dolly_testing.diffproposal
+  pk: 2
+  fields:
+    text: 1
+    flag: 1
+- model: dolly_testing.nullablerelated
+  pk: 1
+  fields:
+    name: A nullable
+    diff_prop: 2
+- model: dolly_testing.singletonflag
+  pk: 1
+  fields:
+    name: Flagged!
+- model: auth.user
+  pk: 1
+  fields:
+    password: pbkdf2_sha256$320000$8o3iHV2ykIUzgg31EMcJjC$Xj8YKVXbtPfaHS4x5l1jRanT6IrUs6Az+f7jBwwVlUU=
+    last_login: 2022-04-06 10:39:26.703109+00:00
+    is_superuser: true
+    username: admin
+    first_name: ''
+    last_name: ''
+    email: robin@betahaus.net
+    is_staff: true
+    is_active: true
+    date_joined: 2022-04-06 10:39:15.665092+00:00
+    groups: []
+    user_permissions: []
+- model: auth.user
+  pk: 2
+  fields:
+    password: pbkdf2_sha256$320000$08h2CGU6Ql5THsqQNcBWb9$gl5cjqlVPoBWMGyxjjV4Z7fsSujBs0y2/u5uBKb+Wl8=
+    last_login: null
+    is_superuser: false
+    username: outsider
+    first_name: Outsiter
+    last_name: ''
+    email: ''
+    is_staff: false
+    is_active: true
+    date_joined: 2022-04-06 10:40:21+00:00
+    groups: []
+    user_permissions: []
+- model: auth.user
+  pk: 3
+  fields:
+    password: pbkdf2_sha256$320000$f1fnQBb5lOumlNpSq01KYD$BfSzKjN4fqrhXhc7bhJvQC7eqEsXAoMEMOEOJ3Mo0Z8=
+    last_login: null
+    is_superuser: false
+    username: org_person
+    first_name: ''
+    last_name: ''
+    email: ''
+    is_staff: false
+    is_active: true
+    date_joined: 2022-04-06 10:41:04.432509+00:00
+    groups: []
+    user_permissions: []
