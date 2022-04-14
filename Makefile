@@ -2,6 +2,7 @@
 
 install:
 	pip install -r requirements.txt
+	make migrations
 
 coverage:
 	coverage run ./manage.py test dolly dolly_testing --keepdb && coverage report
