@@ -28,7 +28,7 @@ class _DefaultContent(_Default):
         blank=True,
         related_name="%(class)s_author_set",
     )
-    tags = models.ManyToManyField("Tag", related_name="%(class)s_tags_set")
+    tags = models.ManyToManyField("Tag", related_name="%(class)s_tags_set", blank=True)
 
     class Meta:
         abstract = True

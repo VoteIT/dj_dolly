@@ -48,7 +48,9 @@ class Command(BaseCommand):
         model_name = options["model_name"]
         dry_run = options["dry_run"]
         exclude = options["exclude"]
-        # exclude_models = set(apps.get_model(x) for x in exclude)
+        for mname in exclude:
+            # Just to make sure they're correct
+            apps.get_model(mname)
         model = apps.get_model(model_name)
         root_pk = options["pk"]
         root_obj = model.objects.get(pk=root_pk)
@@ -69,7 +71,6 @@ class Command(BaseCommand):
             cloner()
             if dry_run:
                 transaction.set_rollback(True)
-
         print("All done - the following types cloned: ")
         print("=" * 45)
         for model, values in cloner.data.items():
