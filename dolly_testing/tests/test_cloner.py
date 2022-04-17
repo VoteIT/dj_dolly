@@ -148,6 +148,26 @@ class LiveClonerTests(TestCase):
         new_diff_prop = diff_props.last()
         self.assertEqual(old_diff_prop.flag, new_diff_prop.flag)
 
+    def test_add_clear_attrs(self):
+        cloner = self._mk_one()
+        cloner.add_clear_attrs(DiffProposal, "flag")
+
+    def test_add_clear_attrs_doesnt_exist(self):
+        cloner = self._mk_one()
+        with self.assertRaises(ValueError):
+            cloner.add_clear_attrs(DiffProposal, "doesntexist")
+
+    def test_add_clear_attrs_not_nullable(self):
+        cloner = self._mk_one()
+        with self.assertRaises(ValueError):
+            # Can't be nulled
+            cloner.add_clear_attrs(DiffProposal, "meeting")
+
+    def test_add_clear_attrs_not_a_relation(self):
+        cloner = self._mk_one()
+        with self.assertRaises(ValueError):
+            cloner.add_clear_attrs(DiffProposal, "name")
+
     def test_clear_attrs(self):
         cloner = self._mk_one()
         cloner.add_clear_attrs(Proposal, "author")

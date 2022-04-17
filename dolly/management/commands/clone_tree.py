@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from collections import defaultdict
 
 from django.apps import apps
 from django.contrib.contenttypes.models import ContentType
@@ -9,7 +10,9 @@ from django.db import DEFAULT_DB_ALIAS
 from django.db import transaction
 
 from dolly.core import LiveCloner
+from dolly.utils import get_fk_fields
 from dolly.utils import get_inf_collector
+from dolly.utils import get_m2m_fields
 from dolly.utils import get_model_formatted_dict
 
 
@@ -41,7 +44,15 @@ class Command(BaseCommand):
             "--exclude",
             action="append",
             default=[],
-            help="Exclude model <app_name.model_name>. It's a good idea to exclude auth.user",
+            help="Exclude model <app_name>.<model_name - It's usually a good idea to exclude auth.user. "
+            "Relations will be kept even if the model is excluded.",
+        )
+        parser.add_argument(
+            "-c",
+            "--clear",
+            action="append",
+            default=[],
+            help="Clear relation (attribute) specified as <app_name>.<model_name>:<attr1>,<attr2>,...",
         )
 
     def handle(self, *args, **options):
@@ -51,6 +62,16 @@ class Command(BaseCommand):
         for mname in exclude:
             # Just to make sure they're correct
             apps.get_model(mname)
+        clear_data = defaultdict(set)
+        for cname in options["clear"]:
+            model_name_to_adj, attrs = cname.split(":")
+            model_to_adj = apps.get_model(model_name_to_adj)
+            attrs = attrs.split(",")
+            if not attrs:
+                raise ValueError(
+                    f"Specified relations to clear doesn't contain any attribute names. Value: {cname}"
+                )
+            clear_data[model_to_adj].update(attrs)
         model = apps.get_model(model_name)
         root_pk = options["pk"]
         root_obj = model.objects.get(pk=root_pk)
@@ -67,6 +88,8 @@ class Command(BaseCommand):
         )
         data = get_model_formatted_dict(related_objects)
         cloner = LiveCloner(data=data)
+        for cmodel, attrs in clear_data.items():
+            cloner.add_clear_attrs(cmodel, *attrs)
         with transaction.atomic(durable=True):
             cloner()
             if dry_run:

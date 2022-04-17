@@ -28,6 +28,8 @@ class LiveCloner:
     clear_model_attrs: dict[Type[Model], set[str]]
 
     # FIXME: Remove ordering and make it automatic instead
+    # FIXME: Warn when resetting attributes makes cloning something pointless
+    # FIXME: Maybe be smarter when fetching something in the middle of a tree
 
     def __init__(
         self,
@@ -74,6 +76,11 @@ class LiveCloner:
             raise ValueError(
                 f"{model} doesn't have m2m or fk fields called: {','.join(missing)}"
             )
+        for f in [f for f in get_fk_fields(model) if f.name in attrs]:
+            if not f.null:
+                raise ValueError(
+                    f"{f.name} can't be cleared automatically - it's not allowed to be null."
+                )
         vals = self.clear_model_attrs.setdefault(model, set())
         vals.update(attrs)
 
