@@ -1,4 +1,4 @@
 -e .[testing]
-jupyter
+# jupyter
+# django-extensions
 ipython
-django-extensions
