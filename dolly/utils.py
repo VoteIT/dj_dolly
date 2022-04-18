@@ -157,3 +157,109 @@ def get_inf_collector() -> DeepCollector:
         dc.MAXIMUM_RELATED_INSTANCES = maxsize
         return dc
     raise ImportError("django-deep-collector not installed")
+
+
+def get_all_dependencies(*items: Type[models.Model]):
+    """
+    >>> from dolly_testing.models import Meeting, Proposal, MeetingGroup, DiffProposal
+
+    >>> sorted(x[0].__name__ for x in get_all_dependencies(Meeting))
+    ['Meeting', 'Organisation', 'User']
+
+    >>> sorted(x[0].__name__ for x in get_all_dependencies(Proposal))
+    ['AgendaItem', 'ContentType', 'Meeting', 'MeetingGroup', 'Organisation', 'Proposal', 'User']
+
+    >>> sorted(x[0].__name__ for x in get_all_dependencies(MeetingGroup))
+    ['ContentType', 'Meeting', 'MeetingGroup', 'Organisation', 'User']
+
+    >>> sorted(x[0].__name__ for x in get_all_dependencies(DiffProposal))
+    ['AgendaItem', 'ContentType', 'DiffProposal', 'Meeting', 'MeetingGroup', 'Organisation', 'SingletonFlag', 'Text', 'User']
+
+    """
+    handled = set()
+    to_check = set(items)
+    result = []
+    while to_check:
+        m = to_check.pop()
+        deps = get_dependencies(m)
+        result.append((m, deps))
+        handled.add(m)
+        to_check.update(x for x in deps if x not in handled)
+    return result
+
+
+def get_dependencies(
+    model: Type[models.Model],
+) -> set[Type[models.Model]]:
+    """
+    >>> from dolly_testing.models import Meeting, Proposal, MeetingGroup, DiffProposal
+    >>> sorted(f.__name__ for f in get_dependencies(Meeting))
+    ['Organisation', 'User']
+
+    >>> sorted(f.__name__ for f in get_dependencies(Proposal))
+    ['AgendaItem', 'Meeting', 'MeetingGroup', 'User']
+
+    >>> sorted(f.__name__ for f in get_dependencies(DiffProposal))
+    ['AgendaItem', 'Meeting', 'MeetingGroup', 'SingletonFlag', 'Text', 'User']
+
+    >>> sorted(f.__name__ for f in get_dependencies(MeetingGroup))
+    ['ContentType', 'Meeting']
+
+    """
+    deps = set()
+    for f in get_fk_fields(model, exclude_ptr=True):
+        if f.related_model:
+            deps.add(f.related_model)
+    return deps
+
+
+def topological_sort(source: list[tuple[Type[models.Model], set[Type[models.Model]]]]):
+    """
+    perform topo sort on elements.
+
+    :arg source: list of ``(name, [list of dependancies])`` pairs
+    :returns: list of names, with dependancies listed first
+
+    Credit to Eli Collins:
+    https://stackoverflow.com/questions/11557241/python-sorting-a-dependency-list
+
+    >>> from dolly_testing.models import Organisation, Meeting, Proposal, MeetingGroup, DiffProposal, SingletonFlag
+    >>> source = get_all_dependencies(Organisation, Meeting, Proposal, MeetingGroup, DiffProposal, SingletonFlag)
+    >>> models_names = [x.__name__ for x in topological_sort(source)]
+    >>> models_names.index('Organisation') < models_names.index('Meeting')
+    True
+    >>> models_names.index('Meeting') < models_names.index('AgendaItem')
+    True
+    >>> models_names.index('AgendaItem') < models_names.index('Text')
+    True
+    >>> models_names.index('User') < models_names.index('MeetingGroup')
+    True
+    """
+    pending = [
+        (name, set(deps)) for name, deps in source
+    ]  # copy deps so we can modify set in-place
+    emitted = []
+    while pending:
+        next_pending = []
+        next_emitted = []
+        for entry in pending:
+            name, deps = entry
+            deps.difference_update(emitted)  # remove deps we emitted last pass
+            if deps:  # still has deps? recheck during next pass
+                next_pending.append(entry)
+            else:  # no more deps? time to emit
+                yield name
+                emitted.append(
+                    name
+                )  # <-- not required, but helps preserve original ordering
+                next_emitted.append(
+                    name
+                )  # remember what we emitted for difference_update() in next pass
+        if (
+            not next_emitted
+        ):  # all entries have unmet deps, one of two things is wrong...
+            raise ValueError(
+                "cyclic or missing dependancy detected: %r" % (next_pending,)
+            )
+        pending = next_pending
+        emitted = next_emitted

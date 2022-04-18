@@ -202,7 +202,7 @@ class LiveClonerTests(TestCase):
 
     def test_remap_m2ms_unsaved_clone(self):
         self.org.pk = None
-        cloner = LiveCloner(data={})
+        cloner = LiveCloner(data={Meeting: {self.meeting}})
         with self.assertRaises(ValueError):
             cloner.remap_m2ms(self.org)
 

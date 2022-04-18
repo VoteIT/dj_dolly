@@ -4,15 +4,11 @@ import sys
 from collections import defaultdict
 
 from django.apps import apps
-from django.contrib.contenttypes.models import ContentType
 from django.core.management import BaseCommand
-from django.db import DEFAULT_DB_ALIAS
 from django.db import transaction
 
 from dolly.core import LiveCloner
-from dolly.utils import get_fk_fields
 from dolly.utils import get_inf_collector
-from dolly.utils import get_m2m_fields
 from dolly.utils import get_model_formatted_dict
 
 
@@ -109,8 +105,12 @@ class Command(BaseCommand):
             print(f"{len(cloner.log)} items recorded")
             for item in cloner.log:
                 model = item["mod"]
+                if model:
+                    model_name = f"{model._meta.app_label}.{model._meta.model_name}"
+                else:
+                    model_name = "GLOBAL"
                 print(
-                    f"{model._meta.app_label}.{model._meta.model_name}".ljust(40),
+                    model_name.ljust(40),
                     item["act"].ljust(30),
                     item["msg"],
                 )

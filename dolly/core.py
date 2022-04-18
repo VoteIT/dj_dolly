@@ -8,9 +8,12 @@ from typing import Union
 from django.conf import settings
 from django.db.models import Model, Field
 
+from dolly.utils import get_all_dependencies
 from dolly.utils import get_concrete_superclasses
+from dolly.utils import get_dependencies
 from dolly.utils import get_fk_fields
 from dolly.utils import get_m2m_fields
+from dolly.utils import topological_sort
 
 
 class LogAction(TypedDict):
@@ -51,14 +54,21 @@ class LiveCloner:
         self.prepped_data = defaultdict(dict)
         self.pk_map = defaultdict(dict)
         self.m2m_data = defaultdict(dict)
-        order = list(order)
-        for m in data:
-            if m not in order:
-                order.append(m)
-        self.data = {model: data[model] for model in order if data[model]}
         self.clear_model_attrs = {}
         self.log = []
         self.logging_enabled = getattr(settings, "DEBUG", False)
+        if order:
+            order = list(order)
+            for m in data:
+                if m not in order:
+                    order.append(m)
+            self.add_log(mod=None, act="order", msg=f"Manual order set to: {order}")
+        else:
+            assert data
+            dependencies = get_all_dependencies(*data.keys())
+            order = list(topological_sort(dependencies))
+            self.add_log(mod=None, act="order", msg=f"Automatic order set to: {order}")
+        self.data = {model: data[model] for model in order if data.get(model)}
 
     def __call__(self):
         """
@@ -71,7 +81,7 @@ class LiveCloner:
         for model, values in self.data.items():
             self.remap_m2ms(*values)
 
-    def add_log(self, *, mod: Type[Model], act: str, msg: str):
+    def add_log(self, *, mod: Optional[Type[Model]], act: str, msg: str):
         if self.logging_enabled:
             self.log.append(dict(act=act, mod=mod, msg=msg))
 
