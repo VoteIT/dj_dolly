@@ -233,3 +233,22 @@ class LiveClonerTests(TestCase):
         old_meeting = meetings.first()
         new_meeting = meetings.last()
         self.assertEqual(old_meeting, cloner.get_original(new_meeting))
+
+    def test_wrong_order(self):
+        # Probably good exceptions later on
+        cloner = LiveCloner(
+            data=self.get_fixture(),
+            order=reversed(
+                [
+                    Organisation,
+                    Meeting,
+                    AgendaItem,
+                    MeetingGroup,
+                    Text,
+                    SingletonFlag,
+                    DiffProposal,
+                ]
+            ),
+        )
+        with self.assertRaises(AssertionError):
+            cloner()

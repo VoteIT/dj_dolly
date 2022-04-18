@@ -251,6 +251,11 @@ class LiveCloner:
             f"Relation {field.name} for instance {inst} points to {remap_to} but that object hasn't "
             f"been saved yet. The order is probably wrong."
         )
+        assert remap_to.pk != curr_val, (
+            f"remap_to returned an object with the same pk as the original. "
+            f"Maybe they got called in the wrong order? "
+            f"Adjusted {inst.__class__} object should be processed after {remap_to.__class__}"
+        )
         return remap_to
 
     def _reset(self, inst: Model):
