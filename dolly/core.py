@@ -2,13 +2,21 @@ from collections import defaultdict
 from functools import partial
 from typing import Optional
 from typing import Type
+from typing import TypedDict
 from typing import Union
 
+from django.conf import settings
 from django.db.models import Model, Field
 
 from dolly.utils import get_concrete_superclasses
 from dolly.utils import get_fk_fields
 from dolly.utils import get_m2m_fields
+
+
+class LogAction(TypedDict):
+    act: str
+    mod: Type[Model]
+    msg: str
 
 
 class LiveCloner:
@@ -26,6 +34,7 @@ class LiveCloner:
     # Map of new_pk -> old_pk
     pk_map: dict[Type[Model], dict[int, int]]
     clear_model_attrs: dict[Type[Model], set[str]]
+    log: list[LogAction]
 
     # FIXME: Remove ordering and make it automatic instead
     # FIXME: Warn when resetting attributes makes cloning something pointless
@@ -48,6 +57,8 @@ class LiveCloner:
                 order.append(m)
         self.data = {model: data[model] for model in order if data[model]}
         self.clear_model_attrs = {}
+        self.log = []
+        self.logging_enabled = getattr(settings, "DEBUG", False)
 
     def __call__(self):
         """
@@ -55,9 +66,14 @@ class LiveCloner:
         """
         self.prepare_clone()
         for model, values in self.data.items():
+            self.add_log(mod=model, act="clone", msg=f"{len(values)} items")
             self.clone(*values)
         for model, values in self.data.items():
             self.remap_m2ms(*values)
+
+    def add_log(self, *, mod: Type[Model], act: str, msg: str):
+        if self.logging_enabled:
+            self.log.append(dict(act=act, mod=mod, msg=msg))
 
     # def add_preprocessor(self, model: Type[Model], _callable: callable):
     #     assert issubclass(model, Model)
@@ -90,14 +106,32 @@ class LiveCloner:
         automatically.
         """
         for model in self.data:
-            superclasses = get_concrete_superclasses(model)
-            for superclass in superclasses:
-                if superclass in self.data:
-                    superclass: Type[Model]
-                    to_remove = superclass.objects.filter(
-                        pk__in=set(x.pk for x in self.data[model])
+            if superclasses := get_concrete_superclasses(model):
+                if to_clear_pks := set(x.pk for x in self.data[model]):
+                    for superclass in superclasses:
+                        if superclass in self.data:
+                            superclass: Type[Model]
+                            to_remove = superclass.objects.filter(pk__in=to_clear_pks)
+                            before_remove_count = len(self.data[superclass])
+                            if to_remove:
+                                self.data[superclass].difference_update(to_remove)
+                                self.add_log(
+                                    mod=model,
+                                    act="remove_superclasses:removed",
+                                    msg=f"To remove: {to_remove.count()} Before: {before_remove_count} After: {len(self.data[superclass])}",
+                                )
+                            else:
+                                self.add_log(
+                                    mod=model,
+                                    act="remove_superclasses",
+                                    msg=f"No superclasses for this type existed",
+                                )
+                else:
+                    self.add_log(
+                        mod=model,
+                        act="remove_superclasses",
+                        msg=f"There are superclasses but no data for subclass, nothing will be removed.",
                     )
-                    self.data[superclass].difference_update(to_remove)
 
     def prepare_clone(self):
         """
@@ -107,6 +141,9 @@ class LiveCloner:
         for model, values in self.data.items():
             for inst in values:
                 self.prepped_data[model][inst.pk] = inst
+            self.add_log(
+                mod=model, act="prepare_clone", msg=f"{len(values)} instances in data"
+            )
         self.remove_superclasses()
         # And the next pass prep m2m data
         for model, values in self.data.items():
@@ -116,6 +153,11 @@ class LiveCloner:
                 if x.name not in self.clear_model_attrs.get(model, ())
             ]
             if m2m_fields:
+                self.add_log(
+                    mod=model,
+                    act="prepare_clone",
+                    msg=f"m2m fields: {','.join(f.name for f in m2m_fields)}",
+                )
                 for inst in values:
                     m2m_results = {}
                     for m2m_field in m2m_fields:
@@ -135,6 +177,7 @@ class LiveCloner:
         model = values[0].__class__
         remap_fields = set()
         clear_fields = set()
+        skipped_fields = set()
         clear_fieldnames = self.clear_model_attrs.get(model, ())
         for f in get_fk_fields(model):
             if f.name in clear_fieldnames:
@@ -142,6 +185,26 @@ class LiveCloner:
                 continue  # Should not be remapped
             if f.related_model in self.data:
                 remap_fields.add(f)
+            else:
+                skipped_fields.add(f)
+        if skipped_fields:
+            self.add_log(
+                mod=model,
+                act="remap_fks:maintained",
+                msg=f"Not in data so not remapped: {','.join(f.name for f in skipped_fields)}",
+            )
+        if clear_fields:
+            self.add_log(
+                mod=model,
+                act="remap_fks:clearing",
+                msg=f"{','.join(f.name for f in clear_fields)}",
+            )
+        if remap_fields:
+            self.add_log(
+                mod=model,
+                act="remap_fks:remap",
+                msg=f"{','.join(f.name for f in remap_fields)}",
+            )
         for inst in values:
             inst: Model
             for f in remap_fields:

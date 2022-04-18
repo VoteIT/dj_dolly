@@ -54,11 +54,18 @@ class Command(BaseCommand):
             default=[],
             help="Clear relation (attribute) specified as <app_name>.<model_name>:<attr1>,<attr2>,...",
         )
+        parser.add_argument(
+            "--quiet",
+            default=False,
+            help="Don't print stuff.",
+            action="store_true",
+        )
 
     def handle(self, *args, **options):
         model_name = options["model_name"]
         dry_run = options["dry_run"]
         exclude = options["exclude"]
+        quiet = options["quiet"]
         for mname in exclude:
             # Just to make sure they're correct
             apps.get_model(mname)
@@ -75,17 +82,18 @@ class Command(BaseCommand):
         model = apps.get_model(model_name)
         root_pk = options["pk"]
         root_obj = model.objects.get(pk=root_pk)
-        if dry_run:
+        if dry_run and not quiet:
             print("!! Dry run - nothing will be saved !!")
         collector = get_inf_collector()
         collector.EXCLUDE_MODELS = exclude
         collector.collect(root_obj)
         related_objects = collector.get_collected_objects()
-        print(
-            f"Initial find: {len(related_objects)} objects. "
-            f"Some may be removed from the collection during the clone process. "
-            f"(For instance superclasses of multi-table inheritance models)"
-        )
+        if not quiet:
+            print(
+                f"Initial find: {len(related_objects)} objects. "
+                f"Some may be removed from the collection during the clone process. "
+                f"(For instance superclasses of multi-table inheritance models)"
+            )
         data = get_model_formatted_dict(related_objects)
         cloner = LiveCloner(data=data)
         for cmodel, attrs in clear_data.items():
@@ -94,10 +102,15 @@ class Command(BaseCommand):
             cloner()
             if dry_run:
                 transaction.set_rollback(True)
-        print("All done - the following types cloned: ")
-        print("=" * 45)
-        for model, values in cloner.data.items():
-            print(
-                f"{model._meta.app_label}.{model._meta.model_name}".ljust(40),
-                f"{len(values)}".rjust(4),
-            )
+                if not quiet:
+                    print("!! Dry run - nothing was saved !!")
+        if not quiet:
+            print("=" * 80)
+            print(f"{len(cloner.log)} items recorded")
+            for item in cloner.log:
+                model = item["mod"]
+                print(
+                    f"{model._meta.app_label}.{model._meta.model_name}".ljust(40),
+                    item["act"].ljust(30),
+                    item["msg"],
+                )
