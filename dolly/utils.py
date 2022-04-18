@@ -136,8 +136,6 @@ def get_data_id_struct(
     """
     result = defaultdict(set)
     for model, items in data.items():
-        if model._meta.auto_created:
-            continue
         if items:
             result[model].update([x.pk for x in items])
     return result
