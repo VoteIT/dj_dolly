@@ -159,7 +159,7 @@ def get_inf_collector() -> DeepCollector:
     raise ImportError("django-deep-collector not installed")
 
 
-def get_all_dependencies(*items: Type[models.Model]):
+def get_all_dependencies(*items: Type[models.Model], ignore=()):
     """
     >>> from dolly_testing.models import Meeting, Proposal, MeetingGroup, DiffProposal
 
@@ -175,13 +175,17 @@ def get_all_dependencies(*items: Type[models.Model]):
     >>> sorted(x[0].__name__ for x in get_all_dependencies(DiffProposal))
     ['AgendaItem', 'ContentType', 'DiffProposal', 'Meeting', 'MeetingGroup', 'Organisation', 'SingletonFlag', 'Text', 'User']
 
+    >>> from django.contrib.auth.models import User
+    >>> sorted(x[0].__name__ for x in get_all_dependencies(DiffProposal, ignore={User}))
+    ['AgendaItem', 'ContentType', 'DiffProposal', 'Meeting', 'MeetingGroup', 'Organisation', 'SingletonFlag', 'Text']
+
     """
     handled = set()
     to_check = set(items)
     result = []
     while to_check:
         m = to_check.pop()
-        deps = get_dependencies(m)
+        deps = get_dependencies(m, ignore=ignore)
         result.append((m, deps))
         handled.add(m)
         to_check.update(x for x in deps if x not in handled)
@@ -189,7 +193,7 @@ def get_all_dependencies(*items: Type[models.Model]):
 
 
 def get_dependencies(
-    model: Type[models.Model],
+    model: Type[models.Model], ignore: set[Type[models.Model]] = ()
 ) -> set[Type[models.Model]]:
     """
     >>> from dolly_testing.models import Meeting, Proposal, MeetingGroup, DiffProposal
@@ -205,10 +209,12 @@ def get_dependencies(
     >>> sorted(f.__name__ for f in get_dependencies(MeetingGroup))
     ['ContentType', 'Meeting']
 
+    >>> sorted(f.__name__ for f in get_dependencies(MeetingGroup, ignore={Meeting}))
+    ['ContentType']
     """
     deps = set()
     for f in get_fk_fields(model, exclude_ptr=True):
-        if f.related_model:
+        if f.related_model and f.related_model not in ignore:
             deps.add(f.related_model)
     return deps
 
