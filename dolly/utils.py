@@ -159,6 +159,19 @@ def get_inf_collector() -> DeepCollector:
     raise ImportError("django-deep-collector not installed")
 
 
+def get_all_related_models(*items: Type[models.Model]) -> set[Type[models.Model]]:
+    """
+    >>> from dolly_testing.models import Meeting, Proposal, MeetingGroup, DiffProposal
+    >>> sorted(x.__name__ for x in get_all_related_models(Meeting, Proposal, MeetingGroup, DiffProposal))
+    ['AgendaItem', 'ContentType', 'DiffProposal', 'Meeting', 'MeetingGroup', 'Organisation', 'Proposal', 'SingletonFlag', 'Text', 'User']
+    """
+    results = set()
+    results.update(items)
+    for (m, deps) in get_all_dependencies(*items):
+        results.update(deps)
+    return results
+
+
 def get_all_dependencies(*items: Type[models.Model], ignore=()):
     """
     >>> from dolly_testing.models import Meeting, Proposal, MeetingGroup, DiffProposal

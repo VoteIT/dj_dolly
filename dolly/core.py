@@ -9,6 +9,7 @@ from django.conf import settings
 from django.db.models import Model, Field
 
 from dolly.utils import get_all_dependencies
+from dolly.utils import get_all_related_models
 from dolly.utils import get_concrete_superclasses
 from dolly.utils import get_dependencies
 from dolly.utils import get_fk_fields
@@ -65,7 +66,12 @@ class LiveCloner:
             self.add_log(mod=None, act="order", msg=f"Manual order set to: {order}")
         else:
             assert data
-            dependencies = get_all_dependencies(*data.keys())
+            ignorable_ordering_models = get_all_related_models(*data.keys()) - set(
+                data.keys()
+            )
+            dependencies = get_all_dependencies(
+                *data.keys(), ignore=ignorable_ordering_models
+            )
             order = list(topological_sort(dependencies))
             self.add_log(mod=None, act="order", msg=f"Automatic order set to: {order}")
         self.data = {model: data[model] for model in order if data.get(model)}
