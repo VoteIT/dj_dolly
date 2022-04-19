@@ -1,9 +1,7 @@
 from collections import defaultdict
-from functools import partial
 from typing import Optional
 from typing import Type
 from typing import TypedDict
-from typing import Union
 
 from django.conf import settings
 from django.db.models import Model, Field
@@ -11,9 +9,9 @@ from django.db.models import Model, Field
 from dolly.utils import get_all_dependencies
 from dolly.utils import get_all_related_models
 from dolly.utils import get_concrete_superclasses
-from dolly.utils import get_dependencies
 from dolly.utils import get_fk_fields
 from dolly.utils import get_m2m_fields
+from dolly.utils import get_nat_key
 from dolly.utils import topological_sort
 
 
@@ -63,7 +61,11 @@ class LiveCloner:
             for m in data:
                 if m not in order:
                     order.append(m)
-            self.add_log(mod=None, act="order", msg=f"Manual order set to: {order}")
+            self.add_log(
+                mod=None,
+                act="order",
+                msg=f"Manual order set to: {', '.join(get_nat_key(x) for x in order)}",
+            )
         else:
             assert data
             ignorable_ordering_models = get_all_related_models(*data.keys()) - set(
@@ -73,7 +75,11 @@ class LiveCloner:
                 *data.keys(), ignore=ignorable_ordering_models
             )
             order = list(topological_sort(dependencies))
-            self.add_log(mod=None, act="order", msg=f"Automatic order set to: {order}")
+            self.add_log(
+                mod=None,
+                act="order",
+                msg=f"Automatic order set to: {', '.join(get_nat_key(x) for x in order)}",
+            )
         self.data = {model: data[model] for model in order if data.get(model)}
 
     def __call__(self):
@@ -89,6 +95,8 @@ class LiveCloner:
 
     def add_log(self, *, mod: Optional[Type[Model]], act: str, msg: str):
         if self.logging_enabled:
+            if isinstance(mod, type) and issubclass(mod, Model):
+                mod = get_nat_key(mod)
             self.log.append(dict(act=act, mod=mod, msg=msg))
 
     # def add_preprocessor(self, model: Type[Model], _callable: callable):

@@ -1,0 +1,37 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %} {{title}} {% endblock %}
+
+{% block content %}
+
+<h2>{{title}}</h2>
+
+{% if log %}
+    <table>
+        <thead>
+        <tr>
+            <th>#</th>
+            <th>Model</th>
+            <th>Action</th>
+            <th>Msg</th>
+        </tr>
+        </thead>
+        <tbody>
+    {% for item in log %}
+    <tr>
+        <td>{{forloop.counter}}</td>
+        <td>{{item.mod}}</td>
+        <td>{{item.act}}</td>
+        <td>{{item.msg}}</td>
+    </tr>
+    {% endfor %}
+        </tbody>
+    <table/>
+{% else %}
+    <p>No log content.</p>
+{% endif %}
+
+{% endblock %}
+
+

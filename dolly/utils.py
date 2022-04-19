@@ -282,3 +282,7 @@ def topological_sort(source: list[tuple[Type[models.Model], set[Type[models.Mode
             )
         pending = next_pending
         emitted = next_emitted
+
+
+def get_nat_key(model: Type[models.Model]) -> str:
+    return f"{model._meta.app_label}.{model._meta.model_name}"

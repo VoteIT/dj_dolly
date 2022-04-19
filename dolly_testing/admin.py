@@ -1,5 +1,6 @@
 from django.contrib import admin
 
+from dolly.admin import report_structure
 from dolly_testing.models import AgendaItem
 from dolly_testing.models import DiffProposal
 from dolly_testing.models import Meeting
@@ -17,6 +18,7 @@ from dolly_testing.models import Text
 @admin.register(Organisation, Tag, SingletonFlag)
 class DefaultAdmin(admin.ModelAdmin):
     list_display = ("__str__",)
+    actions = [report_structure]
 
 
 @admin.register(OrganisationRole, MeetingRole)
@@ -27,15 +29,17 @@ class RoleAdmin(admin.ModelAdmin):
 @admin.register(Meeting)
 class MeetingAdmin(admin.ModelAdmin):
     list_display = ("__str__", "organisation")
+    actions = [report_structure]
 
 
 @admin.register(MeetingGroup, AgendaItem, Proposal, DiffProposal)
-class MeetingContextAdmin(admin.ModelAdmin):
+class MeetingContextAdmin( admin.ModelAdmin):
     list_display = (
         "__str__",
         "meeting",
         "agenda",
     )
+    actions = [report_structure]
 
     def agenda(self, instance):
         if hasattr(instance, "agenda_item"):
