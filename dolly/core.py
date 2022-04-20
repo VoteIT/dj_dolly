@@ -4,6 +4,7 @@ from typing import Type
 from typing import TypedDict
 
 from django.conf import settings
+from django.core import serializers
 from django.db.models import Model, Field
 
 from dolly.utils import get_all_dependencies
@@ -319,3 +320,24 @@ class LiveCloner:
         assert inst.pk in self.pk_map[klass], f"{inst} is not a clone"
         orig_pk = self.pk_map[klass][inst.pk]
         return self.m2m_data[klass].get(orig_pk, default)
+
+
+class Exporter:
+    # This is just a stub, we might not need exporters
+    data: list[Model]
+
+    def __init__(self, *, data: list[Model]):
+        self.data = data
+
+    def serialize(self, stream, format="yaml"):
+        serializers.serialize(
+            format,
+            self.data,
+            # fields=exp.select_fields,
+            # indent=indent,
+            # use_natural_foreign_keys=use_natural_foreign_keys,
+            # use_natural_primary_keys=use_natural_primary_keys,
+            stream=stream,
+            # progress_output=self.stdout,
+            object_count=len(self.data),
+        )
