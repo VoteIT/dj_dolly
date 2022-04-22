@@ -31,8 +31,8 @@ class ChildTests(TestCase):
 
     # def test_inheritance_two_levels(self):
     #     initial_pk = self.child.pk
-    #     _reset(self.child.parent)
-    #     _reset(self.child)
+    #     reset_obj(self.child.parent)
+    #     reset_obj(self.child)
     #     self.child.save(force_insert=True)
     #     self.assertNotEqual(initial_pk, self.child.pk)
 
@@ -44,6 +44,6 @@ class ChildTests(TestCase):
 #
 #     def test_inheritance(self):
 #         initial_pk = self.br.pk
-#         _reset(self.br)
+#         reset_obj(self.br)
 #         self.br.save()
 #         self.assertNotEqual(initial_pk, self.br.pk)

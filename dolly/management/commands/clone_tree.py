@@ -13,7 +13,7 @@ from dolly.utils import get_model_formatted_dict
 
 
 class Command(BaseCommand):
-    help = "Import and create a new meeting. Won't overwrite existing meetings and can be run multiple times."
+    help = "Clone an existing structure"
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -104,10 +104,8 @@ class Command(BaseCommand):
             print("=" * 80)
             print(f"{len(cloner.log)} items recorded")
             for item in cloner.log:
-                model = item["mod"]
-                if model:
-                    model_name = f"{model._meta.app_label}.{model._meta.model_name}"
-                else:
+                model_name = item["mod"]
+                if not model_name:
                     model_name = "GLOBAL"
                 print(
                     model_name.ljust(40),

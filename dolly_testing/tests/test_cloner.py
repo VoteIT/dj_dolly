@@ -42,15 +42,6 @@ class LiveClonerTests(TestCase):
     def _mk_one(self, data=None):
         return LiveCloner(
             data=data and data or self.get_fixture(),
-            order=[
-                Organisation,
-                Meeting,
-                AgendaItem,
-                MeetingGroup,
-                Text,
-                SingletonFlag,
-                DiffProposal,
-            ],
         )
 
     def test_remove_superclasses(self):
@@ -210,7 +201,7 @@ class LiveClonerTests(TestCase):
         cloner = self._mk_one()
         f = self.meeting._meta.get_field("organisation")
         with self.assertRaises(ValueError):
-            cloner.get_remap_obj(self.meeting, f)
+            cloner.get_remap_obj_from_field(self.meeting, f)
 
     def test_is_clone(self):
         cloner = self._mk_one()
@@ -218,8 +209,8 @@ class LiveClonerTests(TestCase):
         meetings = Meeting.objects.order_by("pk")
         old_meeting = meetings.first()
         new_meeting = meetings.last()
-        self.assertFalse(cloner.is_clone(old_meeting))
-        self.assertTrue(cloner.is_clone(new_meeting))
+        self.assertFalse(cloner.is_new(old_meeting))
+        self.assertTrue(cloner.is_new(new_meeting))
 
     def test_add_clear_attrs_bad_attr(self):
         cloner = self._mk_one()
@@ -233,22 +224,3 @@ class LiveClonerTests(TestCase):
         old_meeting = meetings.first()
         new_meeting = meetings.last()
         self.assertEqual(old_meeting, cloner.get_original(new_meeting))
-
-    def test_wrong_order(self):
-        # Probably good exceptions later on
-        cloner = LiveCloner(
-            data=self.get_fixture(),
-            order=reversed(
-                [
-                    Organisation,
-                    Meeting,
-                    AgendaItem,
-                    MeetingGroup,
-                    Text,
-                    SingletonFlag,
-                    DiffProposal,
-                ]
-            ),
-        )
-        with self.assertRaises(AssertionError):
-            cloner()

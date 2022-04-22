@@ -62,6 +62,10 @@ def get_m2m_fields(model: Type[models.Model]) -> set[models.Field]:
 
 def is_pointer(field: models.Field) -> bool:
     # Is this correct or should it be a check on the local field?
+    # print(field.name)
+    # print(field)
+    # print(field.one_to_one)
+    # print(field.remote_field)
     return field.one_to_one and getattr(field.remote_field, "parent_link", False)
 
 
@@ -186,11 +190,11 @@ def get_all_dependencies(*items: Type[models.Model], ignore=()):
     ['ContentType', 'Meeting', 'MeetingGroup', 'Organisation', 'User']
 
     >>> sorted(x[0].__name__ for x in get_all_dependencies(DiffProposal))
-    ['AgendaItem', 'ContentType', 'DiffProposal', 'Meeting', 'MeetingGroup', 'Organisation', 'SingletonFlag', 'Text', 'User']
+    ['AgendaItem', 'ContentType', 'DiffProposal', 'Meeting', 'MeetingGroup', 'Organisation', 'Proposal', 'SingletonFlag', 'Text', 'User']
 
     >>> from django.contrib.auth.models import User
     >>> sorted(x[0].__name__ for x in get_all_dependencies(DiffProposal, ignore={User}))
-    ['AgendaItem', 'ContentType', 'DiffProposal', 'Meeting', 'MeetingGroup', 'Organisation', 'SingletonFlag', 'Text']
+    ['AgendaItem', 'ContentType', 'DiffProposal', 'Meeting', 'MeetingGroup', 'Organisation', 'Proposal', 'SingletonFlag', 'Text']
 
     """
     handled = set()
@@ -217,7 +221,7 @@ def get_dependencies(
     ['AgendaItem', 'Meeting', 'MeetingGroup', 'User']
 
     >>> sorted(f.__name__ for f in get_dependencies(DiffProposal))
-    ['AgendaItem', 'Meeting', 'MeetingGroup', 'SingletonFlag', 'Text', 'User']
+    ['AgendaItem', 'Meeting', 'MeetingGroup', 'Proposal', 'SingletonFlag', 'Text', 'User']
 
     >>> sorted(f.__name__ for f in get_dependencies(MeetingGroup))
     ['ContentType', 'Meeting']
@@ -226,7 +230,7 @@ def get_dependencies(
     ['ContentType']
     """
     deps = set()
-    for f in get_fk_fields(model, exclude_ptr=True):
+    for f in get_fk_fields(model, exclude_ptr=False):
         if f.related_model and f.related_model not in ignore:
             deps.add(f.related_model)
     return deps
@@ -285,4 +289,11 @@ def topological_sort(source: list[tuple[Type[models.Model], set[Type[models.Mode
 
 
 def get_nat_key(model: Type[models.Model]) -> str:
+    """
+    Djangos normal way of handling natural keys. Is there no util in django for this?
+
+    >>> from django.contrib.auth.models import User
+    >>> get_nat_key(User)
+    'auth.user'
+    """
     return f"{model._meta.app_label}.{model._meta.model_name}"
