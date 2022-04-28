@@ -1,15 +1,27 @@
+from __future__ import annotations
 from collections import defaultdict
 from sys import maxsize
+from typing import Iterable
+from typing import Optional
+from typing import TYPE_CHECKING
 from typing import Type
+from typing import Union
 
+from django.apps import apps
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.db.models import ForeignKey
 from django.db import models
+from django.db.transaction import get_connection
+
+from dolly.exceptions import CrossLinkedCloneError
 
 try:
     from deep_collector.core import DeepCollector
-except ImportError:
+except ImportError:  # pragma: no cover
     DeepCollector = None
+
+if TYPE_CHECKING:
+    from dolly.core import LiveCloner
 
 
 def get_local_m2m_fields(model: Type[models.Model]) -> set[models.Field]:
@@ -61,11 +73,6 @@ def get_m2m_fields(model: Type[models.Model]) -> set[models.Field]:
 
 
 def is_pointer(field: models.Field) -> bool:
-    # Is this correct or should it be a check on the local field?
-    # print(field.name)
-    # print(field)
-    # print(field.one_to_one)
-    # print(field.remote_field)
     return field.one_to_one and getattr(field.remote_field, "parent_link", False)
 
 
@@ -152,15 +159,46 @@ def get_model_formatted_dict(objs) -> dict[Type[models.Model], set[models.Model]
     return result
 
 
-def get_inf_collector() -> DeepCollector:
+def get_inf_collector(
+    exclude_models: Iterable[Union[Type[models.Model], str]] = ()
+) -> DeepCollector:
     """
-    Make sure everything gets exported
+    Make sure everything gets exported.
+    Specify exclude_models as natural key or model
+
+    >>> from django.contrib.auth.models import User
+    >>> collector=get_inf_collector(exclude_models=[User])
+    >>> collector.EXCLUDE_MODELS
+    ['auth.user']
+    >>> collector=get_inf_collector(exclude_models=['auth.user'])
+    >>> collector.EXCLUDE_MODELS
+    ['auth.user']
+
+    >>> get_inf_collector(exclude_models=['404'])
+    Traceback (most recent call last):
+    ...
+    ValueError: not enough values to unpack (expected 2, got 1)
+
+    >>> get_inf_collector(exclude_models=['auth.404'])
+    Traceback (most recent call last):
+    ...
+    LookupError: App 'auth' doesn't have a '404' model.
     """
-    if DeepCollector is not None:
-        dc = DeepCollector()
-        dc.MAXIMUM_RELATED_INSTANCES = maxsize
-        return dc
-    raise ImportError("django-deep-collector not installed")
+    if DeepCollector is None:  # pragma: no cover
+        raise ImportError("django-deep-collector not installed")
+    dc = DeepCollector()
+    dc.MAXIMUM_RELATED_INSTANCES = maxsize
+    exclude = set()
+    for item in exclude_models:
+        if isinstance(item, str):
+            assert apps.get_model(item)
+            exclude.add(item)
+        elif issubclass(item, models.Model):
+            exclude.add(get_nat_key(item))
+        else:
+            raise TypeError(f"{item} must be str or Model")
+    dc.EXCLUDE_MODELS = list(exclude)
+    return dc
 
 
 def get_all_related_models(*items: Type[models.Model]) -> set[Type[models.Model]]:
@@ -169,7 +207,7 @@ def get_all_related_models(*items: Type[models.Model]) -> set[Type[models.Model]
     >>> sorted(x.__name__ for x in get_all_related_models(Meeting, Proposal, MeetingGroup, DiffProposal))
     ['AgendaItem', 'ContentType', 'DiffProposal', 'Meeting', 'MeetingGroup', 'Organisation', 'Proposal', 'SingletonFlag', 'Text', 'User']
     """
-    results = set()
+    results: set[Type[models.Model]] = set()
     results.update(items)
     for (m, deps) in get_all_dependencies(*items):
         results.update(deps)
@@ -288,7 +326,7 @@ def topological_sort(source: list[tuple[Type[models.Model], set[Type[models.Mode
         emitted = next_emitted
 
 
-def get_nat_key(model: Type[models.Model]) -> str:
+def get_nat_key(model: Union[Type[models.Model], models.Model]) -> str:
     """
     Djangos normal way of handling natural keys. Is there no util in django for this?
 
@@ -297,3 +335,43 @@ def get_nat_key(model: Type[models.Model]) -> str:
     'auth.user'
     """
     return f"{model._meta.app_label}.{model._meta.model_name}"
+
+
+def safe_clone(root_obj, exclude_models=(), cloner: Optional[LiveCloner] = None):
+    """
+    Make sure collection -> cloning -> collection yields the same result so the cloning process doesn't cause some
+    unexpected side effects.
+
+    Returns anything fishy found or None
+    """
+    if cloner is None:
+        from dolly.core import LiveCloner
+
+        cloner = LiveCloner(data={})
+    connection = get_connection()
+    if not connection.in_atomic_block:
+        raise RuntimeError("Must be run while atomic is enabled")
+
+    initial_model = root_obj.__class__
+    initial_pk = root_obj.pk
+    assert root_obj.pk is not None
+
+    collector = get_inf_collector(exclude_models=exclude_models)
+    collector.collect(root_obj)
+    data = get_model_formatted_dict(collector.get_collected_objects())
+    cloner.data = data
+    initial_collected_ids = get_data_id_struct(data)
+    cloner()
+    initial_root = initial_model.objects.get(pk=initial_pk)
+    collector = get_inf_collector(exclude_models=exclude_models)
+    collector.collect(initial_root)
+    data = get_model_formatted_dict(collector.get_collected_objects())
+    second_collected_ids = get_data_id_struct(data)
+    extra_found = {}
+    for (m, vals) in second_collected_ids.items():
+        found = vals - initial_collected_ids.get(m, set())
+        if found:
+            extra_found[m] = found
+    if extra_found:
+        raise CrossLinkedCloneError(extra_found)
+    return cloner

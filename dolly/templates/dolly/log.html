@@ -7,6 +7,10 @@
 
 <h2>{{title}}</h2>
 
+<p>
+    Ignoring models: {{ ignoring }}
+</p>
+
 {% if log %}
     <table>
         <thead>
@@ -30,6 +34,34 @@
     <table/>
 {% else %}
     <p>No log content.</p>
+{% endif %}
+
+{% if bad_duplications %}
+        <h2>Cloned objects appeared in initial colleciton</h2>
+        <p>Essentially if you would clone this structure it would cause several objects to be cross-linked.
+            Usually this is a result of cloning M2Ms that shouldn't be cloned.
+        </p>
+
+         <table>
+            <thead>
+            <tr>
+                <th>#</th>
+                <th>Model</th>
+                <th>Number of items</th>
+            </tr>
+            </thead>
+            <tbody>
+        {% for model, values in bad_duplications.items %}
+        <tr>
+            <td>{{forloop.counter}}</td>
+            <td>{{ model  }}</td>
+            <td>{{ values | length }}</td>
+        </tr>
+        {% endfor %}
+            </tbody>
+        <table/>
+
+
 {% endif %}
 
 {% endblock %}

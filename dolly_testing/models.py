@@ -15,7 +15,7 @@ class _Default(models.Model):
         abstract = True
 
     def __str__(self):
-        return self.name and self.name or super().__str__()
+        return self.name and f"{self.name}:{self.pk}" or super().__str__()
 
     objects: models.Manager
 

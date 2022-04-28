@@ -1,23 +1,59 @@
 import doctest
+import unittest
 
 from deep_collector.core import DeepCollector
 from django.contrib.auth.models import User
 from django.test import TestCase
 
+from dolly.exceptions import CrossLinkedCloneError
 from dolly.utils import get_data_id_struct
 from dolly.utils import get_model_formatted_dict
+from dolly.utils import get_nat_key
 from dolly.utils import get_parents
+from dolly.utils import safe_clone
 from dolly_testing import models
 from dolly_testing.models import DiffProposal
 from dolly_testing.models import Meeting
 from dolly_testing.models import Proposal
+from dolly_testing.testing import options
 
-opts = (
-    doctest.NORMALIZE_WHITESPACE
-    | doctest.ELLIPSIS
-    | doctest.FAIL_FAST
-    | doctest.IGNORE_EXCEPTION_DETAIL
-)
+
+class SafeCloneOutsideTransactionTests(unittest.TestCase):
+    def test_no_transaction(self):
+        with self.assertRaises(RuntimeError):
+            safe_clone(object())
+
+
+class SafeCloneTests(TestCase):
+    fixtures = ["dolly_testing"]
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.meeting = Meeting.objects.get(pk=1)
+
+    def _obj_key(self, obj):
+        assert obj.pk is not None
+        return f"{get_nat_key(obj)}.{obj.pk}"
+
+    def test_collection_after_clone_yields_same_results(self):
+        safe_clone(
+            self.meeting,
+            exclude_models=[
+                "auth.user",
+                "dolly_testing.organisation",
+                "dolly_testing.tag",
+            ],
+        )
+
+    def test_collection_tags_causes_problems(self):
+        with self.assertRaises(CrossLinkedCloneError):
+            safe_clone(
+                self.meeting,
+                exclude_models=[
+                    "auth.user",
+                    "dolly_testing.organisation",
+                ],
+            )
 
 
 class UtilTests(TestCase):
@@ -26,7 +62,7 @@ class UtilTests(TestCase):
     def test_util_docs(self):
         from dolly import utils
 
-        doctest.testmod(utils, optionflags=opts)
+        doctest.testmod(utils, optionflags=options)
 
     def test_get_data_id_struct(self):
         org = models.Organisation.objects.get(pk=1)

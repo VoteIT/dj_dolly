@@ -1,10 +1,9 @@
 from collections import Counter
 from collections import defaultdict
-from typing import Iterator
+from typing import Iterable
 from typing import Optional
 from typing import Type
 from typing import TypedDict
-from typing import Union
 
 from django.conf import settings
 from django.core import serializers
@@ -25,7 +24,7 @@ from dolly.utils import topological_sort
 
 class LogAction(TypedDict):
     act: str
-    mod: str
+    mod: Optional[str]
     msg: str
 
 
@@ -53,8 +52,14 @@ class BaseRemapper:
     def add_log(self, *, mod: Optional[Type[Model]], act: str, msg: str):
         if self.logging_enabled:
             if isinstance(mod, type) and issubclass(mod, Model):
-                mod = get_nat_key(mod)
-            self.log.append(LogAction(act=act, mod=mod, msg=msg))
+                mod_name = get_nat_key(mod)
+            elif isinstance(mod, str):
+                mod_name = mod
+            elif mod is None:
+                mod_name = None
+            else:
+                raise TypeError(f"{mod} must be a string or a Django model")
+            self.log.append(LogAction(act=act, mod=mod_name, msg=msg))
 
     def sort(self) -> list[Type[Model]]:
         """
@@ -112,6 +117,7 @@ class BaseRemapper:
         curr_val = getattr(inst, id_name)
         if curr_val is not None:
             return self.get_remap_obj(field.related_model, curr_val)
+        return None
 
     def get_remap_obj_from_existing(self, inst: Model):
         assert inst.pk is not None, f"{inst} has no pk"
@@ -254,7 +260,8 @@ class LiveCloner(BaseRemapper):
                                     msg=f"To remove: {to_remove.count()} Before: {before_remove_count} After: {len(self.data[superclass])}",
                                 )
                                 superclasses_post_check.add(superclass)
-                            else:
+                            else:  # pragma: no cover
+                                # This should never happen i guess? :)
                                 self.add_log(
                                     mod=model,
                                     act="remove_superclasses",
@@ -348,7 +355,6 @@ class LiveCloner(BaseRemapper):
                 msg=f"{','.join(f.name for f in remap_fields)}",
             )
         for inst in values:
-            inst: Model
             for f in remap_fields:
                 remap_to = self.get_remap_obj_from_field(inst, f)
                 if remap_to is not None:
@@ -410,9 +416,8 @@ class Importer(BaseRemapper):
     auto_find_existing: dict[Type[Model], set[str]]
     pointer_assigned_objs: set[Model]
 
-    def __init__(self, *, data: Iterator[DeserializedObject]):
+    def __init__(self, *, data: Iterable[DeserializedObject]):
         super().__init__()
-        self.existing = defaultdict(dict)
         # self.objs_with_deferred_fields = []
         self.auto_find_existing = defaultdict(set)
         self.data = defaultdict(set)
@@ -433,6 +438,18 @@ class Importer(BaseRemapper):
             self.save_new(*values)
         for values in self.data.values():
             self.report_remapping(*[v.object for v in values])
+
+    @classmethod
+    def from_fp(cls, filename: str):
+        with open(filename, "r") as fixture:
+            objects = list(
+                serializers.deserialize(
+                    "yaml",
+                    fixture,
+                    handle_forward_references=True,
+                )
+            )
+        return cls(data=objects)
 
     def add_auto_find_existing(self, model: Type[Model], *attrs: str):
         for attr in attrs:
@@ -474,7 +491,7 @@ class Importer(BaseRemapper):
     ) -> Optional[QuerySet]:
         deserialized_map = {}
         if not self.data.get(model):
-            return
+            return None
         for deserialized in self.data[model]:
             val = getattr(deserialized.object, attr)
             # Don't find objects via falsy values
