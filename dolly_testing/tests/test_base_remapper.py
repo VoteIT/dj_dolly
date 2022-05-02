@@ -1,3 +1,4 @@
+import doctest
 import os
 
 from django.test import TestCase
@@ -5,6 +6,7 @@ from django.test import TestCase
 from dolly.core import BaseRemapper
 from dolly_testing.models import Meeting
 from dolly_testing.models import Organisation
+from dolly_testing.testing import options
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FIXTURE_FN = os.path.join(BASE_DIR, "fixtures", "dolly_testing.yaml")
@@ -20,6 +22,12 @@ class BaseRemapperTests(TestCase):
 
     def _mk_one(self):
         return BaseRemapper()
+
+    def test_docs(self):
+        from dolly import core
+
+        result = doctest.testmod(core, optionflags=options)
+        self.assertFalse(result.failed)
 
     def test_track_obj_require_changed(self):
         remapper = self._mk_one()

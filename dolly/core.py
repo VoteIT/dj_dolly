@@ -1,5 +1,7 @@
 from collections import Counter
 from collections import defaultdict
+from inspect import signature
+from typing import Callable
 from typing import Iterable
 from typing import Optional
 from typing import Type
@@ -40,6 +42,9 @@ class BaseRemapper:
     # Contained dict: new pk as key, old pk as value
     pk_map: dict[Type[Model], dict[int, int]]
     remapped_objs: dict[Type[Model], set[Model]]
+    # actions
+    pre_save_actions: dict[Type[Model], list[Callable]]
+    post_save_actions: dict[Type[Model], list[Callable]]
 
     def __init__(self):
         self.log = []
@@ -48,6 +53,46 @@ class BaseRemapper:
         self.pk_map = defaultdict(dict)
         self.allow_same_pk = defaultdict(set)
         self.remapped_objs = defaultdict(set)
+        self.pre_save_actions = defaultdict(list)
+        self.post_save_actions = defaultdict(list)
+
+    def add_pre_save(self, model: Type[Model], _callable: Callable):
+        assert issubclass(model, Model)
+        assert validate_callable(_callable)
+        self.pre_save_actions[model].append(_callable)
+
+    def add_post_save(self, model: Type[Model], _callable: Callable):
+        assert issubclass(model, Model)
+        assert validate_callable(_callable)
+        self.post_save_actions[model].append(_callable)
+
+    def run_pre_save(self, *values: Model):
+        if not values:
+            return
+        model = values[0].__class__
+        if model in self.pre_save_actions:
+            actions = self.pre_save_actions[model]
+            self.add_log(
+                mod=model,
+                act="run_pre_save",
+                msg=f"Actions: {', '.join(str(x) for x in actions)}",
+            )
+            for action in actions:
+                action(self, *values)
+
+    def run_post_save(self, *values: Model):
+        if not values:
+            return
+        model = values[0].__class__
+        if model in self.post_save_actions:
+            actions = self.post_save_actions[model]
+            self.add_log(
+                mod=model,
+                act="run_post_save",
+                msg=f"Actions: {', '.join(str(x) for x in actions)}",
+            )
+            for action in actions:
+                action(self, *values)
 
     def add_log(self, *, mod: Optional[Type[Model]], act: str, msg: str):
         if self.logging_enabled:
@@ -390,9 +435,11 @@ class LiveCloner(BaseRemapper):
             pks.append(inst.pk)
             self.reset_obj(inst)
         self.remap_fks(*values)
+        self.run_pre_save(*values)
         for old_pk, inst in zip(pks, values):
             inst.save()
             self.register_new_pk(inst, old_pk)
+        self.run_post_save(*values)
 
     def get_original(self, inst: Model):
         original_pk = self.get_old_pk(inst)
@@ -627,6 +674,7 @@ class Importer(BaseRemapper):
         # This will change pks of tracked data within the deserialized m2ms.
         # Since this import data doesn't exist in the db yet, it can be done prior to saving the object.
         self.remap_m2ms(*values)
+        self.run_pre_save(*[x.object for x in values])
         for deserialized in values:
             assert (
                 deserialized.object.pk is not None
@@ -642,6 +690,7 @@ class Importer(BaseRemapper):
             ), f"{deserialized} pk is None after save"
             if must_reset_pk:
                 self.register_new_pk(deserialized.object, old_pk)
+        self.run_post_save(*[x.object for x in values])
 
 
 class Exporter:
@@ -663,3 +712,27 @@ class Exporter:
             # progress_output=self.stdout,
             object_count=len(self.data),
         )
+
+
+def validate_callable(_callable):
+    """
+    Make sure a callable conforms to expected params.
+
+    >>> def callme(remapper, *values):
+    ...     pass
+    ...
+    >>> validate_callable(callme)
+    True
+
+    >>> def callme(remapper):
+    ...     pass
+    ...
+    >>> validate_callable(callme)
+    False
+
+    >>> validate_callable(object)
+    False
+    """
+    # FIXME: Maybe better validation later on ;)
+    sig = signature(_callable)
+    return len(sig.parameters) == 2

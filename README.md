@@ -289,12 +289,64 @@ True
 
 ```
 
+
+### Pre and post-processing data
+
+This works for both imports and cloning.
+
+* Pre-save hooks gets called exactly before save, after remaps. Use it to morph data.
+* Post-save gets called when the new pk's registered so functions like `is_clone` work. 
+  Use it to validate data since any exception will cause the transaction to abort.
+
+To register a method, create a callable that accepts the remapper as first argument,
+and *values as second argument where values will be the models of the same.
+
+In this example we'll create a method that checks if newly imported users have
+usernames that will clash with existing users, and simply randomize them in that case.
+
+Note that finding existing objects is done before running pre_save too, so those
+objects won't be passed to this method.
+
+In this example we'll simply assign a new username rather than finding them.
+
+```python
+
+>>> def random_userid(importer, *users):
+...     for user in users:
+...         user.username = f"{user.username}-new"
+...
+
+>>> importer = Importer.from_fp("./dolly_testing/fixtures/dolly_testing.yaml")
+>>> importer.add_pre_save(User, random_userid)
+>>> importer.add_auto_find_existing(Tag, 'name')
+>>> with transaction.atomic():
+...     importer()
+...
+
+>>> count = {}
+>>> for m in (Meeting, DiffProposal, Proposal, User, Tag):
+...     count[m] = m.objects.count()
+...
+>>> [(k.__name__, v) for k,v in count.items()]
+[('Meeting', 5), ('DiffProposal', 5), ('Proposal', 10), ('User', 6), ('Tag', 2)]
+
+>>> last_user = User.objects.all().order_by('pk').last()
+>>> last_user.username
+'outsider-new'
+
+```
+
+Post-save works exactly the same, use it to validate data. Any raised exception there
+will cause the database to roll back the transaction.
+
+
 ### Managements commands
 
 If you include `dolly` in your settings file you'll have access to
 clone_tree and import_tree. They're verbose by default and you can use them
 to run imports or clone a structure from the command line. Always call them with
 `--dry-run` first to see a report of what would be done!
+
 
 ### Admin integration
 

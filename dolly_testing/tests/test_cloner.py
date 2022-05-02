@@ -224,3 +224,50 @@ class LiveClonerTests(TestCase):
         old_meeting = meetings.first()
         new_meeting = meetings.last()
         self.assertEqual(old_meeting, cloner.get_original(new_meeting))
+
+    def test_pre_save_action(self):
+        def change_name(self, *items):
+            for obj in items:
+                obj.name = "Hello world!"
+
+        cloner = self._mk_one()
+        cloner.add_pre_save(Meeting, change_name)
+        cloner()
+        meetings = Meeting.objects.order_by("pk")
+        old_meeting = meetings.first()
+        new_meeting = meetings.last()
+        self.assertEqual(
+            "First meeting",
+            old_meeting.name,
+        )
+        self.assertEqual(
+            "Hello world!",
+            new_meeting.name,
+        )
+
+    def test_post_save_action(self):
+        class MyCallable:
+            def __init__(self):
+                self.seen = False
+
+            def __call__(self, cloner, *items):
+                self.seen = bool(items)
+                for obj in items:
+                    obj.name = "Hello world!"
+
+        my_callable = MyCallable()
+        cloner = self._mk_one()
+        cloner.add_post_save(Meeting, my_callable)
+        cloner()
+        meetings = Meeting.objects.order_by("pk")
+        old_meeting = meetings.first()
+        new_meeting = meetings.last()
+        self.assertEqual(
+            "First meeting",
+            old_meeting.name,
+        )
+        self.assertEqual(
+            "First meeting",
+            new_meeting.name,
+        )
+        self.assertTrue(my_callable.seen)

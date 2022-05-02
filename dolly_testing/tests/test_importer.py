@@ -1,5 +1,6 @@
 import os
 
+from django.contrib.auth.models import User
 from django.core import serializers
 from django.test import TestCase
 
@@ -91,3 +92,52 @@ class ImporterTests(TestCase):
             self.org, importer.get_remap_obj_from_existing(deserialized_org.object)
         )
         self.assertEqual({1: -1}, importer.pk_map[Organisation])
+
+    def test_pre_save_action(self):
+        def change_name(self, *items):
+            for obj in items:
+                obj.name = "Hello world!"
+
+        importer = self._mk_one()
+        importer.add_auto_find_existing(User, "pk")
+        importer.add_pre_save(Meeting, change_name)
+        importer()
+        meetings = Meeting.objects.order_by("pk")
+        old_meeting = meetings.first()
+        new_meeting = meetings.last()
+        self.assertEqual(
+            "First meeting",
+            old_meeting.name,
+        )
+        self.assertEqual(
+            "Hello world!",
+            new_meeting.name,
+        )
+
+    def test_post_save_action(self):
+        class MyCallable:
+            def __init__(self):
+                self.seen = False
+
+            def __call__(self, cloner, *items):
+                self.seen = bool(items)
+                for obj in items:
+                    obj.name = "Hello world!"
+
+        my_callable = MyCallable()
+        importer = self._mk_one()
+        importer.add_auto_find_existing(User, "pk")
+        importer.add_post_save(Meeting, my_callable)
+        importer()
+        meetings = Meeting.objects.order_by("pk")
+        old_meeting = meetings.first()
+        new_meeting = meetings.last()
+        self.assertEqual(
+            "First meeting",
+            old_meeting.name,
+        )
+        self.assertEqual(
+            "First meeting",
+            new_meeting.name,
+        )
+        self.assertTrue(my_callable.seen)
