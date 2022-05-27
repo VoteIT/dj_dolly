@@ -4,9 +4,11 @@ import os
 from django.test import TestCase
 
 from dolly.core import BaseRemapper
+from dolly.exceptions import CyclicOrMissingDependencyError
 from dolly_testing.models import Meeting
 from dolly_testing.models import Organisation
 from dolly_testing.testing import options
+from dolly_testing.models import A, B
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FIXTURE_FN = os.path.join(BASE_DIR, "fixtures", "dolly_testing.yaml")
@@ -86,3 +88,24 @@ class BaseRemapperTests(TestCase):
         self.assertTrue(remapper.is_new(self.org))
         self.org.pk = -1
         self.assertFalse(remapper.is_new(self.org))
+
+    def test_sort_with_cyclic_dependency(self):
+        remapper = self._mk_one()
+        a_obj = A.objects.create(
+            name="A",
+        )
+        b_obj = B.objects.create(name="B")
+        remapper.data[A] = {a_obj}
+        remapper.data[B] = {b_obj}
+        self.assertRaises(CyclicOrMissingDependencyError, remapper.sort)
+
+    def test_sort_with_cyclic_dependency_but_ignored_attributes(self):
+        remapper = self._mk_one()
+        a_obj = A.objects.create(
+            name="A",
+        )
+        b_obj = B.objects.create(name="B")
+        remapper.data[A] = {a_obj}
+        remapper.data[B] = {b_obj}
+        remapper.add_clear_attrs(A, "friend")
+        self.assertEqual([A, B], remapper.sort())

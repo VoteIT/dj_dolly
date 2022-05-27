@@ -58,6 +58,9 @@ class BaseRemapper:
         self.pre_save_actions = defaultdict(list)
         self.post_save_actions = defaultdict(list)
         self.clear_model_attrs = defaultdict(set)
+        if not hasattr(self, "data"):
+            # Testing-related, not really usable!
+            self.data = {}
 
     def add_pre_save(self, model: Type[Model], _callable: Callable):
         assert issubclass(model, Model)
@@ -144,11 +147,13 @@ class BaseRemapper:
         Sort data in relevant import order. Returns sorted order too.
         """
         assert self.data
-        ignorable_ordering_models = get_all_related_models(*self.data.keys()) - set(
-            self.data.keys()
-        )
+        ignorable_ordering_models = get_all_related_models(
+            *self.data.keys(), ignore_attrs=self.clear_model_attrs
+        ) - set(self.data.keys())
         dependencies = get_all_dependencies(
-            *self.data.keys(), ignore=ignorable_ordering_models
+            *self.data.keys(),
+            ignore=ignorable_ordering_models,
+            ignore_attrs=self.clear_model_attrs,
         )
         order = list(topological_sort(dependencies))
         self.add_log(
@@ -277,8 +282,8 @@ class LiveCloner(BaseRemapper):
         *,
         data: dict[Type[Model], set[Model]],
     ):
-        super().__init__()
         self.data = data
+        super().__init__()
         self.m2m_data = defaultdict(dict)
 
     def __call__(self):

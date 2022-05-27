@@ -14,6 +14,7 @@ from django.db import models
 from django.db.transaction import get_connection
 
 from dolly.exceptions import CrossLinkedCloneError
+from dolly.exceptions import CyclicOrMissingDependencyError
 
 try:
     from deep_collector.core import DeepCollector
@@ -343,8 +344,8 @@ def topological_sort(source: list[tuple[Type[models.Model], set[Type[models.Mode
         if (
             not next_emitted
         ):  # all entries have unmet deps, one of two things is wrong...
-            raise ValueError(
-                "cyclic or missing dependancy detected: %r" % (next_pending,)
+            raise CyclicOrMissingDependencyError(
+                "->\n" + "\n".join(str(x) for x in next_pending)
             )
         pending = next_pending
         emitted = next_emitted

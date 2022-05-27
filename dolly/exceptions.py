@@ -7,6 +7,10 @@ class DollyBaseError(Exception):
     ...
 
 
+class CyclicOrMissingDependencyError(DollyBaseError):
+    ...
+
+
 class ImportTreeError(DollyBaseError):
     ...
 

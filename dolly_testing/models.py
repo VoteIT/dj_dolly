@@ -149,8 +149,8 @@ class BookReview(Book, Article):
 
 # Cyclic dependency example
 class A(_Default):
-    friend = models.ForeignKey("B", on_delete=models.CASCADE)
+    friend = models.ForeignKey("B", on_delete=models.CASCADE, null=True)
 
 
 class B(_Default):
-    best_friend = models.ForeignKey("A", on_delete=models.CASCADE)
+    best_friend = models.ForeignKey("A", on_delete=models.CASCADE, null=True)
