@@ -61,6 +61,7 @@ class BaseRemapper:
         if not hasattr(self, "data"):
             # Testing-related, not really usable!
             self.data = {}
+        self.print_log = False
 
     def add_pre_save(self, model: Type[Model], _callable: Callable):
         assert issubclass(model, Model)
@@ -131,16 +132,20 @@ class BaseRemapper:
         self.clear_model_attrs[model].update(attrs)
 
     def add_log(self, *, mod: Optional[Type[Model]], act: str, msg: str):
+        if isinstance(mod, type) and issubclass(mod, Model):
+            mod_name = get_nat_key(mod)
+        elif isinstance(mod, str):
+            mod_name = mod
+        elif mod is None:
+            mod_name = None
+        else:
+            raise TypeError(f"{mod} must be a string or a Django model")
         if self.logging_enabled:
-            if isinstance(mod, type) and issubclass(mod, Model):
-                mod_name = get_nat_key(mod)
-            elif isinstance(mod, str):
-                mod_name = mod
-            elif mod is None:
-                mod_name = None
-            else:
-                raise TypeError(f"{mod} must be a string or a Django model")
             self.log.append(LogAction(act=act, mod=mod_name, msg=msg))
+        if self.print_log:
+            if not mod_name:
+                mod_name = "GLOBAL"
+            print(mod_name.ljust(40), act.ljust(30), msg)
 
     def sort(self) -> list[Type[Model]]:
         """
