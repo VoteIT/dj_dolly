@@ -74,17 +74,7 @@ class Command(BaseCommand):
                     f"Specified relations to clear doesn't contain any attribute names. Value: {cname}"
                 )
             reuse_objects[model_to_adj].update(attrs)
-        with open(filename, "r") as fixture:
-            objects = list(
-                serializers.deserialize(
-                    "yaml",
-                    fixture,
-                    handle_forward_references=True,
-                )
-            )
-        importer = Importer(data=objects)
-        if not quiet:
-            print(f"Initial find: {len(objects)} objects. ")
+        importer = Importer.from_filename(filename)
         for rmodel, attrs in reuse_objects.items():
             importer.add_auto_find_existing(rmodel, *attrs)
         try:

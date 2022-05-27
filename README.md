@@ -233,7 +233,7 @@ as M2M-relations which make them special.
 >>> [(k.__name__, v) for k,v in count.items()]
 [('Meeting', 3), ('DiffProposal', 3), ('Proposal', 6), ('User', 3), ('Tag', 2)]
 
->>> importer = Importer.from_fp("./dolly_testing/fixtures/dolly_testing.yaml")
+>>> importer = Importer.from_filename("./dolly_testing/fixtures/dolly_testing.yaml")
 
 ``` 
 
@@ -257,7 +257,7 @@ It's specified per class. We'll add tags too.
 
 ```python
 
->>> importer = Importer.from_fp("./dolly_testing/fixtures/dolly_testing.yaml")
+>>> importer = Importer.from_filename("./dolly_testing/fixtures/dolly_testing.yaml")
 >>> importer.add_auto_find_existing(User, 'username')
 >>> importer.add_auto_find_existing(Tag, 'name')
 >>> with transaction.atomic():
@@ -311,13 +311,13 @@ In this example we'll simply assign a new username rather than finding them.
 
 ```python
 
->>> def random_userid(importer, *users):
+>>> def new_userid(importer, *users):
 ...     for user in users:
 ...         user.username = f"{user.username}-new"
 ...
 
->>> importer = Importer.from_fp("./dolly_testing/fixtures/dolly_testing.yaml")
->>> importer.add_pre_save(User, random_userid)
+>>> importer = Importer.from_filename("./dolly_testing/fixtures/dolly_testing.yaml")
+>>> importer.add_pre_save(User, new_userid)
 >>> importer.add_auto_find_existing(Tag, 'name')
 >>> with transaction.atomic():
 ...     importer()
@@ -330,7 +330,7 @@ In this example we'll simply assign a new username rather than finding them.
 >>> [(k.__name__, v) for k,v in count.items()]
 [('Meeting', 5), ('DiffProposal', 5), ('Proposal', 10), ('User', 6), ('Tag', 2)]
 
->>> last_user = User.objects.all().order_by('pk').last()
+>>> last_user = User.objects.all().order_by('username').last()
 >>> last_user.username
 'outsider-new'
 

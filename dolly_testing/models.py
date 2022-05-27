@@ -145,3 +145,12 @@ class Book(Piece):
 
 class BookReview(Book, Article):
     pass
+
+
+# Cyclic dependency example
+class A(_Default):
+    friend = models.ForeignKey("B", on_delete=models.CASCADE)
+
+
+class B(_Default):
+    best_friend = models.ForeignKey("A", on_delete=models.CASCADE)

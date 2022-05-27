@@ -45,6 +45,8 @@ class BaseRemapper:
     # actions
     pre_save_actions: dict[Type[Model], list[Callable]]
     post_save_actions: dict[Type[Model], list[Callable]]
+    # Stuff we don't care about that won't have an effect on relations
+    clear_model_attrs: dict[Type[Model], set[str]]
 
     def __init__(self):
         self.log = []
@@ -55,6 +57,7 @@ class BaseRemapper:
         self.remapped_objs = defaultdict(set)
         self.pre_save_actions = defaultdict(list)
         self.post_save_actions = defaultdict(list)
+        self.clear_model_attrs = defaultdict(set)
 
     def add_pre_save(self, model: Type[Model], _callable: Callable):
         assert issubclass(model, Model)
@@ -93,6 +96,36 @@ class BaseRemapper:
             )
             for action in actions:
                 action(self, *values)
+
+    def add_clear_attrs(self, model: Type[Model], *attrs):
+        """
+        Clear specified attributes for model.
+        Remember to specify subclasses too + that some models might not be nullable.
+
+        >>> from dolly_testing.models import Proposal
+        >>> remapper = BaseRemapper()
+        >>> remapper.add_clear_attrs(Proposal, 'meeting_group')
+        >>> remapper.clear_model_attrs.get(Proposal)
+        {'meeting_group'}
+        >>> remapper.add_clear_attrs(Proposal, 'meeting')
+        Traceback (most recent call last):
+        ...
+        ValueError: meeting can't be cleared automatically - it's not allowed to be null.
+
+        """
+        allowed_names = set(
+            f.name for f in get_fk_fields(model) | get_m2m_fields(model)
+        )
+        if missing := set(attrs) - allowed_names:
+            raise ValueError(
+                f"{model} doesn't have m2m or fk fields called: {','.join(missing)}"
+            )
+        for f in [f for f in get_fk_fields(model) if f.name in attrs]:
+            if not f.null:
+                raise ValueError(
+                    f"{f.name} can't be cleared automatically - it's not allowed to be null."
+                )
+        self.clear_model_attrs[model].update(attrs)
 
     def add_log(self, *, mod: Optional[Type[Model]], act: str, msg: str):
         if self.logging_enabled:
@@ -235,7 +268,6 @@ class LiveCloner(BaseRemapper):
 
     data: dict[Type[Model], set[Model]]
     m2m_data: dict[Type[Model], dict[int, dict[str, list[int]]]]
-    clear_model_attrs: dict[Type[Model], set[str]]
 
     # FIXME: Warn when resetting attributes makes cloning something pointless
     # FIXME: Maybe be smarter when fetching something in the middle of a tree
@@ -248,7 +280,6 @@ class LiveCloner(BaseRemapper):
         super().__init__()
         self.data = data
         self.m2m_data = defaultdict(dict)
-        self.clear_model_attrs = {}
 
     def __call__(self):
         """
@@ -263,25 +294,6 @@ class LiveCloner(BaseRemapper):
             self.remap_m2ms(*values)
         for values in self.data.values():
             self.report_remapping(*values)
-
-    def add_clear_attrs(self, model: Type[Model], *attrs):
-        """
-        Clear specified attributes for model. Remember to specify subclasses too + that some models might not be nullable.
-        """
-        allowed_names = set(
-            f.name for f in get_fk_fields(model) | get_m2m_fields(model)
-        )
-        if missing := set(attrs) - allowed_names:
-            raise ValueError(
-                f"{model} doesn't have m2m or fk fields called: {','.join(missing)}"
-            )
-        for f in [f for f in get_fk_fields(model) if f.name in attrs]:
-            if not f.null:
-                raise ValueError(
-                    f"{f.name} can't be cleared automatically - it's not allowed to be null."
-                )
-        vals = self.clear_model_attrs.setdefault(model, set())
-        vals.update(attrs)
 
     def remove_superclasses(self):
         """
@@ -487,11 +499,19 @@ class Importer(BaseRemapper):
             self.report_remapping(*[v.object for v in values])
 
     @classmethod
-    def from_fp(cls, filename: str):
+    def from_filename(cls, filename: str):
+        file_format = None
+        if filename.endswith("yaml") or filename.endswith("yml"):
+            file_format = "yaml"
+        elif filename.endswith("json"):
+            file_format = "json"
+        assert (
+            file_format
+        ), "Can't figure out file format from file ending. Is it .yaml or .json?"
         with open(filename, "r") as fixture:
             objects = list(
                 serializers.deserialize(
-                    "yaml",
+                    file_format,
                     fixture,
                     handle_forward_references=True,
                 )
@@ -604,8 +624,11 @@ class Importer(BaseRemapper):
         model = values[0].object.__class__
         remap_fields = set()
         maintained_fields = set()
+        clear_fields = set()
         for f in get_fk_fields(model, exclude_ptr=False):
-            if f.related_model in self.tracked_data:
+            if f.name in self.clear_model_attrs.get(model, set()):
+                clear_fields.add(f)
+            elif f.related_model in self.tracked_data:
                 remap_fields.add(f)
             else:
                 maintained_fields.add(f)
@@ -621,6 +644,12 @@ class Importer(BaseRemapper):
                 act="remap_fks:remap",
                 msg=f"{','.join(f.name for f in remap_fields)}",
             )
+        if clear_fields:
+            self.add_log(
+                mod=model,
+                act="remap_fks:clear",
+                msg=f"{','.join(f.name for f in clear_fields)}",
+            )
         for deserialized in values:
             for f in remap_fields:
                 remap_to = self.get_remap_obj_from_field(deserialized.object, f)
@@ -632,6 +661,8 @@ class Importer(BaseRemapper):
                         assert deserialized.object.pk == remap_to.pk
                         self.register_new_pk(deserialized.object, curr_pk)
                         self.pointer_assigned_objs.add(deserialized.object)
+            for f in clear_fields:
+                setattr(deserialized.object, f.name, None)
 
     def remap_m2ms(self, *values: DeserializedObject):
         """
@@ -645,17 +676,23 @@ class Importer(BaseRemapper):
         field_names_to_remap = set(
             f.name for f in m2m_fields if f.related_model in self.tracked_data
         )
+        # Remove clear-fields
+        clear_field_names = self.clear_model_attrs.get(model, set())
+        field_names_to_remap.difference_update(clear_field_names)
         remap_counter = Counter()
         maintained_field_names = set()
         for deserialized in values:
             for field in m2m_fields:
+                old_pks = deserialized.m2m_data.get(field.name)
                 if field.name in field_names_to_remap:
-                    old_pks = deserialized.m2m_data.get(field.name)
                     if old_pks:
                         deserialized.m2m_data[field.name] = [
                             self.get_remap_obj(field.related_model, pk).pk
                             for pk in old_pks
                         ]
+                        remap_counter[field.name] += len(old_pks)
+                elif field.name in clear_field_names:
+                    if old_pks:
                         remap_counter[field.name] += len(old_pks)
                 else:
                     maintained_field_names.add(field.name)
@@ -666,17 +703,23 @@ class Importer(BaseRemapper):
                 msg=f"Kept m2m relations for fields: {', '.join(maintained_field_names)}",
             )
         for k, v in remap_counter.items():
+            if k in field_names_to_remap:
+                action = "remapped"
+            elif k in maintained_field_names:
+                action = "maintained"
+            else:
+                action = "cleared"
             if v:
                 self.add_log(
                     mod=model,
-                    act="remap_m2ms:remapped",
-                    msg=f"Remapped {v} items for field {k}",
+                    act=f"remap_m2ms:{action}",
+                    msg=f"{action.title()} {v} items for field {k}",
                 )
             else:
                 self.add_log(
                     mod=model,
                     act="remap_m2ms:missing",
-                    msg=f"No datafor field {k} to remap",
+                    msg=f"No data for field {k} to remap",
                 )
 
     def save_new(self, *values: DeserializedObject):

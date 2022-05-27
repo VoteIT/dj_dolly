@@ -201,7 +201,9 @@ def get_inf_collector(
     return dc
 
 
-def get_all_related_models(*items: Type[models.Model]) -> set[Type[models.Model]]:
+def get_all_related_models(
+    *items: Type[models.Model], ignore_attrs: dict[Type[models.Model], set[str]] = None
+) -> set[Type[models.Model]]:
     """
     >>> from dolly_testing.models import Meeting, Proposal, MeetingGroup, DiffProposal
     >>> sorted(x.__name__ for x in get_all_related_models(Meeting, Proposal, MeetingGroup, DiffProposal))
@@ -209,14 +211,18 @@ def get_all_related_models(*items: Type[models.Model]) -> set[Type[models.Model]
     """
     results: set[Type[models.Model]] = set()
     results.update(items)
-    for (m, deps) in get_all_dependencies(*items):
+    for (m, deps) in get_all_dependencies(*items, ignore_attrs=ignore_attrs):
         results.update(deps)
     return results
 
 
-def get_all_dependencies(*items: Type[models.Model], ignore=()):
+def get_all_dependencies(
+    *items: Type[models.Model],
+    ignore=(),
+    ignore_attrs: dict[Type[models.Model], set[str]] = None,
+):
     """
-    >>> from dolly_testing.models import Meeting, Proposal, MeetingGroup, DiffProposal
+    >>> from dolly_testing.models import Meeting, Proposal, MeetingGroup, DiffProposal, A, B
 
     >>> sorted(x[0].__name__ for x in get_all_dependencies(Meeting))
     ['Meeting', 'Organisation', 'User']
@@ -234,13 +240,21 @@ def get_all_dependencies(*items: Type[models.Model], ignore=()):
     >>> sorted(x[0].__name__ for x in get_all_dependencies(DiffProposal, ignore={User}))
     ['AgendaItem', 'ContentType', 'DiffProposal', 'Meeting', 'MeetingGroup', 'Organisation', 'Proposal', 'SingletonFlag', 'Text']
 
+    Make sure pointers we don't need are ignored
+    >>> sorted(x[0].__name__ for x in get_all_dependencies(A, ignore_attrs={A: {'friend'}}))
+    ['A']
     """
     handled = set()
     to_check = set(items)
     result = []
+    if ignore_attrs is None:
+        ignore_attrs = {}
+    assert isinstance(ignore_attrs, dict), "Must be a dict"
     while to_check:
         m = to_check.pop()
-        deps = get_dependencies(m, ignore=ignore)
+        deps = get_dependencies(
+            m, ignore=ignore, ignore_attrs=ignore_attrs.get(m, set())
+        )
         result.append((m, deps))
         handled.add(m)
         to_check.update(x for x in deps if x not in handled)
@@ -248,10 +262,12 @@ def get_all_dependencies(*items: Type[models.Model], ignore=()):
 
 
 def get_dependencies(
-    model: Type[models.Model], ignore: set[Type[models.Model]] = ()
+    model: Type[models.Model],
+    ignore: set[Type[models.Model]] = (),
+    ignore_attrs: set[str] = (),
 ) -> set[Type[models.Model]]:
     """
-    >>> from dolly_testing.models import Meeting, Proposal, MeetingGroup, DiffProposal
+    >>> from dolly_testing.models import Meeting, Proposal, MeetingGroup, DiffProposal, A
     >>> sorted(f.__name__ for f in get_dependencies(Meeting))
     ['Organisation', 'User']
 
@@ -266,9 +282,17 @@ def get_dependencies(
 
     >>> sorted(f.__name__ for f in get_dependencies(MeetingGroup, ignore={Meeting}))
     ['ContentType']
+
+    >>> sorted(f.__name__ for f in get_dependencies(A))
+    ['B']
+
+    >>> sorted(f.__name__ for f in get_dependencies(A, ignore_attrs={'friend'}))
+    []
     """
     deps = set()
     for f in get_fk_fields(model, exclude_ptr=False):
+        if f.name in ignore_attrs:
+            continue
         if f.related_model and f.related_model not in ignore:
             deps.add(f.related_model)
     return deps
