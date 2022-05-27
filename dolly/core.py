@@ -561,10 +561,7 @@ class Importer(BaseRemapper):
             existing_vals.add(val)
             # Map import pk to existing object instead
             deserialized = deserialized_map.pop(val)
-            assert isinstance(deserialized.object.pk, int)
-            self.track_obj(item, deserialized.object.pk, allow_same=True)
-            self.register_new_pk(item, deserialized.object.pk)
-            self.data[model].remove(deserialized)
+            self.replace_deserialized_object(deserialized, item)
         if not self.data[model]:
             del self.data[model]
         self.add_log(
@@ -573,6 +570,19 @@ class Importer(BaseRemapper):
             msg=f"Found {existing_qs.count()} via attr {attr}",
         )
         return existing_qs
+
+    def replace_deserialized_object(self, deserialized: DeserializedObject, obj: Model):
+        """
+        Instead of using a deserialized object, reuse an existing database object of the same type.
+        For instance, if something's already imported or if you want to import a structure inside another
+        existing structure.
+        """
+        model = obj.__class__
+        assert deserialized.object.__class__ == model
+        assert isinstance(deserialized.object.pk, int)
+        self.track_obj(obj, deserialized.object.pk, allow_same=True)
+        self.register_new_pk(obj, deserialized.object.pk)
+        self.data[model].remove(deserialized)
 
     def prepare_import(self):
         """
