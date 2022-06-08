@@ -500,6 +500,9 @@ class Importer(BaseRemapper):
             self.add_log(mod=model, act="save_new", msg=f"{len(values)} items")
             self.save_new(*values)
         for values in self.data.values():
+            self.remap_m2ms(*values)
+        for values in self.data.values():
+            self.save_m2ms(*values)
             self.report_remapping(*[v.object for v in values])
 
     @classmethod
@@ -689,7 +692,10 @@ class Importer(BaseRemapper):
         maintained_field_names = set()
         for deserialized in values:
             for field in m2m_fields:
-                old_pks = deserialized.m2m_data.get(field.name)
+                if deserialized.m2m_data is None:
+                    old_pks = []
+                else:
+                    old_pks = deserialized.m2m_data.get(field.name)
                 if field.name in field_names_to_remap:
                     if old_pks:
                         deserialized.m2m_data[field.name] = [
@@ -730,9 +736,6 @@ class Importer(BaseRemapper):
 
     def save_new(self, *values: DeserializedObject):
         self.remap_fks(*values)
-        # This will change pks of tracked data within the deserialized m2ms.
-        # Since this import data doesn't exist in the db yet, it can be done prior to saving the object.
-        self.remap_m2ms(*values)
         self.run_pre_save(*[x.object for x in values])
         for deserialized in values:
             assert (
@@ -744,7 +747,8 @@ class Importer(BaseRemapper):
             if must_reset_pk:
                 old_pk = deserialized.object.pk
                 self.reset_obj(deserialized.object)
-            deserialized.save()
+            # Calling deserialized.save CLEARS m2m data!
+            Model.save_base(deserialized.object, raw=True)
             assert (
                 deserialized.object.pk is not None
             ), f"{deserialized} pk is None after save"
@@ -754,6 +758,18 @@ class Importer(BaseRemapper):
                 old_pk = deserialized.object.pk
             self.track_obj(deserialized.object, old_pk)
         self.run_post_save(*[x.object for x in values])
+
+    def save_m2ms(self, *values: DeserializedObject):
+        """
+        Method taken from djangos deserializer, but we need to call it after all other objects have been handled.
+        """
+        for deserialized in values:
+            if deserialized.m2m_data:
+                for accessor_name, object_list in deserialized.m2m_data.items():
+                    getattr(deserialized.object, accessor_name).set(object_list)
+                # prevent a second (possibly accidental) call to save() from saving
+                # the m2m data twice.
+                deserialized.m2m_data = None
 
 
 class Exporter:

@@ -6,8 +6,10 @@ from django.test import TestCase
 
 from dolly.core import Importer
 from dolly_testing.models import Meeting
+from dolly_testing.models import MeetingGroup
 from dolly_testing.models import Organisation
 from dolly_testing.models import Proposal
+from dolly_testing.models import Tag
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FIXTURE_FN = os.path.join(BASE_DIR, "fixtures", "dolly_testing.yaml")
@@ -127,3 +129,24 @@ class ImporterTests(TestCase):
             new_meeting.name,
         )
         self.assertTrue(my_callable.seen)
+
+    def test_m2m_relations_intact(self):
+        importer = self._mk_one()
+        importer.add_auto_find_existing(User, "pk")
+        original_tag = Tag.objects.get(pk=2)
+        importer()
+        proposals = Proposal.objects.filter(name="Eat more veggies").order_by("pk")
+        first_prop = proposals.first()
+        last_prop = proposals.last()
+        # Tags should be new
+        self.assertIn(original_tag, first_prop.tags.all())
+        self.assertNotIn(original_tag, last_prop.tags.all())
+        self.assertEqual(1, last_prop.tags.count())
+        # Users kept
+        meeting_groups = MeetingGroup.objects.all().order_by("pk")
+        first_mg = meeting_groups.first()
+        last_mg = meeting_groups.last()
+        self.assertEqual(
+            set(first_mg.members.all().values_list("pk", flat=True)),
+            set(last_mg.members.all().values_list("pk", flat=True)),
+        )
