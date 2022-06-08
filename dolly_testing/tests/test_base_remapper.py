@@ -31,37 +31,25 @@ class BaseRemapperTests(TestCase):
         result = doctest.testmod(core, optionflags=options)
         self.assertFalse(result.failed)
 
-    def test_track_obj_require_changed(self):
+    def test_track_obj_handled(self):
         remapper = self._mk_one()
         remapper.track_obj(self.org, 1)
-        with self.assertRaises(ValueError):
-            remapper.get_remap_obj(Organisation, 1)
-
-    def test_track_obj_same_allowed(self):
-        remapper = self._mk_one()
-        remapper.track_obj(self.org, 1, allow_same=True)
+        remapper.prepped_models.add(Organisation)
         self.assertEqual(self.org, remapper.get_remap_obj(Organisation, 1))
 
     def test_track_obj_adding_duplicate(self):
         remapper = self._mk_one()
         remapper.track_obj(self.org, 1)
+        two = Organisation.objects.create()
         with self.assertRaises(ValueError):
-            remapper.track_obj(self.org, 1)
+            remapper.track_obj(two, 1)
 
     def test_get_remap_obj_from_field(self):
         remapper = self._mk_one()
-        remapper.track_obj(self.org, 1, allow_same=True)
+        remapper.track_obj(self.org, 1)
         f = Meeting._meta.get_field("organisation")
+        remapper.prepped_models.add(Organisation)
         self.assertEqual(self.org, remapper.get_remap_obj_from_field(self.meeting, f))
-
-    def test_get_remap_from_existing(self):
-        remapper = self._mk_one()
-        remapper.track_obj(self.org, 1, allow_same=True)
-        remapper.track_obj(self.meeting, 1)
-        self.assertEqual(self.org, remapper.get_remap_obj_from_existing(self.org))
-        with self.assertRaises(ValueError):
-            # Same pk
-            remapper.get_remap_obj_from_existing(self.meeting)
 
     def test_get_old_pk(self):
         remapper = self._mk_one()

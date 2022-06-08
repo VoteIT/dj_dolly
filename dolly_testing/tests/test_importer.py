@@ -48,6 +48,7 @@ class ImporterTests(TestCase):
         self.assertNotIn(Organisation, importer.data)
         self.assertIn(Meeting, importer.tracked_data)
         self.assertIn(Organisation, importer.tracked_data)
+        importer.prepped_models.update((Organisation, Meeting))
         self.assertEqual(self.org, importer.get_remap_obj(Organisation, 1))
         self.assertEqual(self.meeting, importer.get_remap_obj(Meeting, 1))
 
@@ -61,22 +62,6 @@ class ImporterTests(TestCase):
         self.assertGreater(data_sorted.index(Meeting), data_sorted.index(Organisation))
         self.assertGreater(data_sorted.index(Proposal), data_sorted.index(Meeting))
 
-    def test_guard_against_returning_same_object(self):
-        importer = self._mk_one()
-        deserialized_org = None
-        for item in importer.data[Organisation]:
-            deserialized_org = item
-            break
-        self.assertEqual(Organisation, deserialized_org.object.__class__)
-        org = deserialized_org.object
-        importer.tracked_data[Organisation] = {org.pk: org}
-        with self.assertRaises(ValueError):
-            importer.get_remap_obj_from_existing(org)
-        self.assertFalse(importer.same_pk_allowed(Organisation, org.pk))
-        importer.allow_same_pk[Organisation].add(org.pk)
-        self.assertTrue(importer.same_pk_allowed(Organisation, org.pk))
-        self.assertEqual(org, importer.get_remap_obj_from_existing(org))
-
     def test_match_and_update(self):
         importer = self._mk_one()
         # Change pk just for the test so existing_pk_map will be updated
@@ -88,6 +73,7 @@ class ImporterTests(TestCase):
         self.assertNotIn(Organisation, importer.data)
         # The import has pk -1 which should now map to the existing object
         self.assertEqual({-1: self.org}, importer.tracked_data[Organisation])
+        importer.prepped_models.add(Organisation)
         self.assertEqual(
             self.org, importer.get_remap_obj_from_existing(deserialized_org.object)
         )

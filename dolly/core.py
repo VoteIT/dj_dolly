@@ -36,7 +36,6 @@ _marker = object()
 class BaseRemapper:
     log: list[LogAction]
     data: dict[Type[Model], set[Model]]
-    allow_same_pk: dict[Type[Model], set[int]]
     # Contained dict: old pk as key
     tracked_data: dict[Type[Model], dict[int, Model]]
     # Contained dict: new pk as key, old pk as value
@@ -47,13 +46,14 @@ class BaseRemapper:
     post_save_actions: dict[Type[Model], list[Callable]]
     # Stuff we don't care about that won't have an effect on relations
     clear_model_attrs: dict[Type[Model], set[str]]
+    # Mark finished models
+    prepped_models: set[Type[Model]]
 
     def __init__(self):
         self.log = []
         self.logging_enabled = getattr(settings, "DEBUG", False)
         self.tracked_data = defaultdict(dict)
         self.pk_map = defaultdict(dict)
-        self.allow_same_pk = defaultdict(set)
         self.remapped_objs = defaultdict(set)
         self.pre_save_actions = defaultdict(list)
         self.post_save_actions = defaultdict(list)
@@ -62,6 +62,7 @@ class BaseRemapper:
             # Testing-related, not really usable!
             self.data = {}
         self.print_log = False
+        self.prepped_models = set()
 
     def add_pre_save(self, model: Type[Model], _callable: Callable):
         assert issubclass(model, Model)
@@ -100,6 +101,7 @@ class BaseRemapper:
             )
             for action in actions:
                 action(self, *values)
+        self.prepped_models.add(model)
 
     def add_clear_attrs(self, model: Type[Model], *attrs):
         """
@@ -174,10 +176,7 @@ class BaseRemapper:
         inst.id = None
         inst._state.adding = True
 
-    def same_pk_allowed(self, model: Type[Model], pk) -> bool:
-        return pk in self.allow_same_pk.get(model, ())
-
-    def track_obj(self, obj: Model, old_pk: int = _marker, allow_same=False):
+    def track_obj(self, obj: Model, old_pk: int = _marker):
         """
         Add and object that either will change pk later on or has a pk that we can't use to find the object.
         This will happen in the following situations:
@@ -190,12 +189,12 @@ class BaseRemapper:
         assert isinstance(old_pk, int)
         tracked_class = self.tracked_data[obj.__class__]
         if old_pk in tracked_class:
-            raise ValueError(
-                f"pk {old_pk} already found in tracked data for {obj.__class__}"
-            )
-        tracked_class[old_pk] = obj
-        if allow_same:
-            self.allow_same_pk[obj.__class__].add(old_pk)
+            if tracked_class[old_pk] != obj:
+                raise ValueError(
+                    f"pk {old_pk} already found in tracked data and it points to another object"
+                )
+        else:
+            tracked_class[old_pk] = obj
 
     def get_remap_obj_from_field(self, inst: Model, field: Field) -> Optional[Model]:
         """
@@ -214,15 +213,10 @@ class BaseRemapper:
     def get_remap_obj(self, model: Type[Model], old_pk: int) -> Model:
         if model not in self.tracked_data:
             raise ValueError(f"{model} not in tracked_data")
+        if model not in self.prepped_models:
+            raise ValueError(f"{model} not prepped yet")
         remap_to = self.tracked_data[model][old_pk]
         assert remap_to.pk is not None, f"{remap_to} hasn't been saved yet."
-        if remap_to.pk == old_pk:
-            if not self.same_pk_allowed(model, old_pk):
-                raise ValueError(
-                    f"remap_to for {model} with pk {old_pk} returned an object with the same pk as the original. "
-                    f"Maybe they got called in the wrong order? "
-                    f"If the object is allowed to keep pk, set allow_same=True when adding it with track_obj."
-                )
         self.remapped_objs[model].add(remap_to)
         return remap_to
 
@@ -610,7 +604,7 @@ class Importer(BaseRemapper):
         model = obj.__class__
         assert deserialized.object.__class__ == model
         assert isinstance(deserialized.object.pk, int)
-        self.track_obj(obj, deserialized.object.pk, allow_same=True)
+        self.track_obj(obj, deserialized.object.pk)
         self.register_new_pk(obj, deserialized.object.pk)
         self.data[model].remove(deserialized)
 
@@ -624,6 +618,8 @@ class Importer(BaseRemapper):
             self.add_log(
                 mod=model, act="prepare_import", msg=f"{len(values)} instances in data"
             )
+        # Anything tracked that isn't in data should be marked as handled already
+        self.prepped_models.update(set(self.tracked_data) - set(self.data))
 
     def remap_fks(self, *values: DeserializedObject):
         """
@@ -744,6 +740,7 @@ class Importer(BaseRemapper):
             ), f"pk already None for {deserialized}"
             # Don't reset these, they've already been assigned a pk from their parent
             must_reset_pk = deserialized.object not in self.pointer_assigned_objs
+            old_pk = None
             if must_reset_pk:
                 old_pk = deserialized.object.pk
                 self.reset_obj(deserialized.object)
@@ -753,6 +750,9 @@ class Importer(BaseRemapper):
             ), f"{deserialized} pk is None after save"
             if must_reset_pk:
                 self.register_new_pk(deserialized.object, old_pk)
+            if old_pk is None:
+                old_pk = deserialized.object.pk
+            self.track_obj(deserialized.object, old_pk)
         self.run_post_save(*[x.object for x in values])
 
 
