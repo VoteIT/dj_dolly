@@ -109,6 +109,15 @@ class BaseRemapper:
                 action(self, *values)
         self.prepped_models.add(model)
 
+    def run_pre_commit_hooks(self):
+        for hook in self.pre_commit_hooks:
+            self.add_log(
+                mod=None,
+                act="run_pre_commit_hook",
+                msg=f"{hook.__module__}:{hook.__name__}",
+            )
+            hook(self)
+
     def add_clear_attrs(self, model: Type[Model], *attrs):
         """
         Clear specified attributes for model.
@@ -302,8 +311,7 @@ class LiveCloner(BaseRemapper):
             self.clone(*values)
         for model, values in self.data.items():
             self.remap_m2ms(*values)
-        for hook in self.pre_commit_hooks:
-            hook(self)
+        self.run_pre_commit_hooks()
         for values in self.data.values():
             self.report_remapping(*values)
 
@@ -511,8 +519,7 @@ class Importer(BaseRemapper):
             self.remap_m2ms(*values)
         for values in self.data.values():
             self.save_m2ms(*values)
-        for hook in self.pre_commit_hooks:
-            hook(self)
+        self.run_pre_commit_hooks()
         for values in self.data.values():
             self.report_remapping(*[v.object for v in values])
 
