@@ -150,3 +150,17 @@ class ImporterTests(TestCase):
             set(first_mg.members.all().values_list("pk", flat=True)),
             set(last_mg.members.all().values_list("pk", flat=True)),
         )
+
+    def test_pre_commit_hook(self):
+        importer = self._mk_one()
+        importer.add_auto_find_existing(User, "pk")
+
+        def hook(imp: Importer):
+            org = list(imp.data[Organisation])[0]
+            org.name = "Whatever"
+            org.save()
+
+        importer.add_pre_commit(hook)
+        importer()
+        org = list(importer.data[Organisation])[0]
+        self.assertEqual("Whatever", org.name)

@@ -44,6 +44,7 @@ class BaseRemapper:
     # actions
     pre_save_actions: dict[Type[Model], list[Callable]]
     post_save_actions: dict[Type[Model], list[Callable]]
+    pre_commit_hooks: list[Callable]
     # Stuff we don't care about that won't have an effect on relations
     clear_model_attrs: dict[Type[Model], set[str]]
     # Mark finished models
@@ -63,16 +64,21 @@ class BaseRemapper:
             self.data = {}
         self.print_log = False
         self.prepped_models = set()
+        self.pre_commit_hooks = []
 
     def add_pre_save(self, model: Type[Model], _callable: Callable):
         assert issubclass(model, Model)
-        assert validate_callable(_callable)
+        assert validate_callable(_callable, 2)
         self.pre_save_actions[model].append(_callable)
 
     def add_post_save(self, model: Type[Model], _callable: Callable):
         assert issubclass(model, Model)
-        assert validate_callable(_callable)
+        assert validate_callable(_callable, 2)
         self.post_save_actions[model].append(_callable)
+
+    def add_pre_commit(self, _callable: Callable):
+        assert validate_callable(_callable, 1)
+        self.pre_commit_hooks.append(_callable)
 
     def run_pre_save(self, *values: Model):
         if not values:
@@ -296,6 +302,8 @@ class LiveCloner(BaseRemapper):
             self.clone(*values)
         for model, values in self.data.items():
             self.remap_m2ms(*values)
+        for hook in self.pre_commit_hooks:
+            hook(self)
         for values in self.data.values():
             self.report_remapping(*values)
 
@@ -503,6 +511,9 @@ class Importer(BaseRemapper):
             self.remap_m2ms(*values)
         for values in self.data.values():
             self.save_m2ms(*values)
+        for hook in self.pre_commit_hooks:
+            hook(self)
+        for values in self.data.values():
             self.report_remapping(*[v.object for v in values])
 
     @classmethod
@@ -793,25 +804,25 @@ class Exporter:
         )
 
 
-def validate_callable(_callable):
+def validate_callable(_callable, param_len):
     """
     Make sure a callable conforms to expected params.
 
     >>> def callme(remapper, *values):
     ...     pass
     ...
-    >>> validate_callable(callme)
+    >>> validate_callable(callme, 2)
     True
 
     >>> def callme(remapper):
     ...     pass
     ...
-    >>> validate_callable(callme)
+    >>> validate_callable(callme, 2)
     False
 
-    >>> validate_callable(object)
+    >>> validate_callable(object, 2)
     False
     """
     # FIXME: Maybe better validation later on ;)
     sig = signature(_callable)
-    return len(sig.parameters) == 2
+    return len(sig.parameters) == param_len

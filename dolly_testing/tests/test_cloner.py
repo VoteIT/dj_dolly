@@ -271,3 +271,16 @@ class LiveClonerTests(TestCase):
             new_meeting.name,
         )
         self.assertTrue(my_callable.seen)
+
+    def test_pre_commit_hook(self):
+        cloner = self._mk_one()
+
+        def hook(lc: LiveCloner):
+            meeting = list(lc.data[Meeting])[0]
+            meeting.name = "Whatever"
+            meeting.save()
+
+        cloner.add_pre_commit(hook)
+        cloner()
+        meeting = Meeting.objects.all().order_by("pk").last()
+        self.assertEqual("Whatever", meeting.name)
