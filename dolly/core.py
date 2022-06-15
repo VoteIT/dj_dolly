@@ -49,6 +49,8 @@ class BaseRemapper:
     clear_model_attrs: dict[Type[Model], set[str]]
     # Mark finished models
     prepped_models: set[Type[Model]]
+    # Explicit dependency, when ordering won't catch things - like generic relations
+    explicit_dependency: dict[Type[Model], set[Type[Model]]]
 
     def __init__(self):
         self.log = []
@@ -65,6 +67,7 @@ class BaseRemapper:
         self.print_log = False
         self.prepped_models = set()
         self.pre_commit_hooks = []
+        self.explicit_dependency = defaultdict(set)
 
     def add_pre_save(self, model: Type[Model], _callable: Callable):
         assert issubclass(model, Model)
@@ -148,6 +151,12 @@ class BaseRemapper:
                 )
         self.clear_model_attrs[model].update(attrs)
 
+    def add_explicit_dependency(self, model: Type[Model], *values: Type[Model]):
+        assert issubclass(model, Model)
+        for m in values:
+            assert issubclass(m, Model)
+        self.explicit_dependency[model].update(values)
+
     def add_log(self, *, mod: Optional[Type[Model]], act: str, msg: str):
         if isinstance(mod, type) and issubclass(mod, Model):
             mod_name = get_nat_key(mod)
@@ -177,6 +186,13 @@ class BaseRemapper:
             ignore=ignorable_ordering_models,
             ignore_attrs=self.clear_model_attrs,
         )
+        # Inject explicit
+        to_handle = self.explicit_dependency.copy()
+        for (m, deps) in dependencies:
+            if m in to_handle:
+                deps.update(to_handle.pop(m))
+        for (m, explicit) in to_handle.items():
+            dependencies.append((m, explicit))
         order = list(topological_sort(dependencies))
         self.add_log(
             mod=None,

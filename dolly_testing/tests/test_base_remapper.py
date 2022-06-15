@@ -5,10 +5,13 @@ from django.test import TestCase
 
 from dolly.core import BaseRemapper
 from dolly.exceptions import CyclicOrMissingDependencyError
+from dolly_testing.models import A
+from dolly_testing.models import B
 from dolly_testing.models import Meeting
 from dolly_testing.models import Organisation
+from dolly_testing.models import Proposal
+from dolly_testing.models import SingletonFlag
 from dolly_testing.testing import options
-from dolly_testing.models import A, B
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FIXTURE_FN = os.path.join(BASE_DIR, "fixtures", "dolly_testing.yaml")
@@ -97,3 +100,20 @@ class BaseRemapperTests(TestCase):
         remapper.data[B] = {b_obj}
         remapper.add_clear_attrs(A, "friend")
         self.assertEqual([A, B], remapper.sort())
+
+    def test_explicit_dependency_and_sort(self):
+        remapper = self._mk_one()
+        remapper.data[Organisation] = {Organisation.objects.get(pk=1)}
+        remapper.data[Meeting] = {Meeting.objects.get(pk=1)}
+        remapper.data[Proposal] = {Proposal.objects.get(pk=1)}
+        remapper.data[SingletonFlag] = {SingletonFlag.objects.get(pk=1)}
+        sorted_models = remapper.sort()
+        self.assertGreater(
+            sorted_models.index(Meeting), sorted_models.index(Organisation)
+        )
+        self.assertGreater(sorted_models.index(Proposal), sorted_models.index(Meeting))
+        remapper.add_explicit_dependency(SingletonFlag, Proposal)
+        sorted_models = remapper.sort()
+        self.assertGreater(
+            sorted_models.index(SingletonFlag), sorted_models.index(Proposal)
+        )
