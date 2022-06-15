@@ -87,29 +87,25 @@ class BaseRemapper:
         if not values:
             return
         model = values[0].__class__
-        if model in self.pre_save_actions:
-            actions = self.pre_save_actions[model]
+        for action in self.pre_save_actions.get(model, ()):
             self.add_log(
                 mod=model,
                 act="run_pre_save",
-                msg=f"Actions: {', '.join(str(x) for x in actions)}",
+                msg=f"{action.__module__}:{action.__name__}",
             )
-            for action in actions:
-                action(self, *values)
+            action(self, *values)
 
     def run_post_save(self, *values: Model):
         if not values:
             return
         model = values[0].__class__
-        if model in self.post_save_actions:
-            actions = self.post_save_actions[model]
+        for action in self.post_save_actions.get(model, ()):
             self.add_log(
                 mod=model,
                 act="run_post_save",
-                msg=f"Actions: {', '.join(str(x) for x in actions)}",
+                msg=f"{action.__module__}:{action.__name__}",
             )
-            for action in actions:
-                action(self, *values)
+            action(self, *values)
         self.prepped_models.add(model)
 
     def run_pre_commit_hooks(self):
