@@ -91,7 +91,7 @@ class BaseRemapper:
             self.add_log(
                 mod=model,
                 act="run_pre_save",
-                msg=f"{action.__module__}:{action.__name__}",
+                msg=self.callable_name(action),
             )
             action(self, *values)
 
@@ -103,7 +103,7 @@ class BaseRemapper:
             self.add_log(
                 mod=model,
                 act="run_post_save",
-                msg=f"{action.__module__}:{action.__name__}",
+                msg=self.callable_name(action),
             )
             action(self, *values)
         self.prepped_models.add(model)
@@ -113,7 +113,7 @@ class BaseRemapper:
             self.add_log(
                 mod=None,
                 act="run_pre_commit_hook",
-                msg=f"{hook.__module__}:{hook.__name__}",
+                msg=self.callable_name(hook),
             )
             hook(self)
 
@@ -288,6 +288,12 @@ class BaseRemapper:
                 msg=f"{len(not_remapped)} item(s) were never used for remapping.",
             )
         return not_remapped
+
+    @staticmethod
+    def callable_name(_callable):
+        if hasattr(_callable, "__class__"):
+            return f"{_callable.__class__.__module__}.{_callable.__class__.__name__}"
+        return f"{_callable.__module__}:{_callable.__name__}"
 
 
 class LiveCloner(BaseRemapper):
