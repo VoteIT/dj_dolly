@@ -1,0 +1,4 @@
+include LICENSE
+include README.md
+recursive-include dolly *
+prune dolly_testing project
