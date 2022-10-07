@@ -291,7 +291,7 @@ class BaseRemapper:
 
     @staticmethod
     def callable_name(_callable):
-        if hasattr(_callable, "__class__"):
+        if isinstance(_callable, type):
             return f"{_callable.__class__.__module__}.{_callable.__class__.__name__}"
         return f"{_callable.__module__}:{_callable.__name__}"
 
