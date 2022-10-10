@@ -1,5 +1,7 @@
 from collections import Counter
 from collections import defaultdict
+from inspect import isfunction
+from inspect import ismethod
 from inspect import signature
 from typing import Callable
 from typing import Iterable
@@ -291,9 +293,26 @@ class BaseRemapper:
 
     @staticmethod
     def callable_name(_callable):
+        """
+        >>> BaseRemapper.callable_name(topological_sort)
+        'dolly.utils:topological_sort'
+
+        >>> BaseRemapper.callable_name(BaseRemapper)
+        'dolly.core.BaseRemapper'
+
+        >>> BaseRemapper.callable_name(BaseRemapper())
+        'dolly.core.BaseRemapper'
+
+        >>> BaseRemapper.callable_name(BaseRemapper().report_remapping)
+        'dolly.core.BaseRemapper:report_remapping'
+       """
         if isinstance(_callable, type):
-            return f"{_callable.__class__.__module__}.{_callable.__class__.__name__}"
-        return f"{_callable.__module__}:{_callable.__name__}"
+            return f"{_callable.__module__}.{_callable.__name__}"
+        elif ismethod(_callable):
+            return f"{_callable.__module__}.{_callable.__self__.__class__.__name__}:{_callable.__name__}"
+        elif isfunction(_callable):
+            return f"{_callable.__module__}:{_callable.__name__}"
+        return f"{_callable.__class__.__module__}.{_callable.__class__.__name__}"
 
 
 class LiveCloner(BaseRemapper):
