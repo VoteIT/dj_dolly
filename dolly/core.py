@@ -305,7 +305,7 @@ class BaseRemapper:
 
         >>> BaseRemapper.callable_name(BaseRemapper().report_remapping)
         'dolly.core.BaseRemapper:report_remapping'
-       """
+        """
         if isinstance(_callable, type):
             return f"{_callable.__module__}.{_callable.__name__}"
         elif ismethod(_callable):
