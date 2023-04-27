@@ -30,6 +30,7 @@ class LiveClonerTests(TestCase):
     def setUpTestData(cls):
         cls.org = Organisation.objects.get(pk=1)
         cls.meeting = Meeting.objects.get(pk=1)
+
         collector = get_inf_collector()
         collector.EXCLUDE_MODELS = ["auth.user"]
         collector.collect(cls.org)
@@ -62,7 +63,10 @@ class LiveClonerTests(TestCase):
         self.assertEqual({1: {"participants": [3, 1]}}, cloner.m2m_data.pop(Meeting))
         self.assertEqual({2: {"tags": [1]}}, cloner.m2m_data.pop(DiffProposal))
         self.assertEqual({1: {"tags": [2]}}, cloner.m2m_data.pop(Proposal))
-        self.assertEqual({1: {"members": [1, 3]}}, cloner.m2m_data.pop(MeetingGroup))
+        self.assertEqual(
+            {1: {"members": [1, 3]}, 2: {"members": [1]}},
+            cloner.m2m_data.pop(MeetingGroup),
+        )
         self.assertFalse(cloner.m2m_data)
 
     def test_count_duplicated(self):
@@ -284,3 +288,13 @@ class LiveClonerTests(TestCase):
         cloner()
         meeting = Meeting.objects.all().order_by("pk").last()
         self.assertEqual("Whatever", meeting.name)
+
+    def test_self_relation_via_null(self):
+        existing_groups = self.fixture_data.get(MeetingGroup)
+        existing_group_pks = {x.pk for x in existing_groups}
+        cloner = self._mk_one()
+        cloner()
+        new_groups = MeetingGroup.objects.exclude(pk__in=existing_group_pks)
+        without_rel = new_groups.filter(delegated_to__isnull=True).first()
+        with_rel = new_groups.filter(delegated_to__isnull=False).first()
+        self.assertEqual(with_rel.delegated_to, without_rel)

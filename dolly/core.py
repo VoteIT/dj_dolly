@@ -53,6 +53,10 @@ class BaseRemapper:
     prepped_models: set[Type[Model]]
     # Explicit dependency, when ordering won't catch things - like generic relations
     explicit_dependency: dict[Type[Model], set[Type[Model]]]
+    # Deferred relation update - field names for models set as null first,and then remap
+    defer_via_null: dict[type[Model], set[str]]
+    # Storage for defer_via_null - model -> field name -> [(object : old relation pk)]
+    deferred_map: dict[type[Model], dict[str, list[tuple[Model, int]]]]
 
     def __init__(self):
         self.log = []
@@ -70,6 +74,24 @@ class BaseRemapper:
         self.prepped_models = set()
         self.pre_commit_hooks = []
         self.explicit_dependency = defaultdict(set)
+        self.defer_via_null = defaultdict(set)
+        self.deferred_map = {}
+
+    def add_defer_via_null(self, model: type[Model], field_name):
+        field = None
+        for f in get_fk_fields(model):
+            if f.name == field_name:
+                field = f
+                break
+        if not field:
+            raise TypeError(f"model {model} has no FK field named {field_name}")
+        if not field.null:
+            raise TypeError(
+                f"model {model} field {field_name} isn't nullable, defer via null won't work"
+            )
+        self.defer_via_null[model].add(field_name)
+        deferred_fields = self.deferred_map.setdefault(model, {})
+        deferred_fields.setdefault(field_name, [])
 
     def add_pre_save(self, model: Type[Model], _callable: Callable):
         assert issubclass(model, Model)
@@ -86,7 +108,7 @@ class BaseRemapper:
         self.pre_commit_hooks.append(_callable)
 
     def run_pre_save(self, *values: Model):
-        if not values:
+        if not values:  # pragma: no coverage
             return
         model = values[0].__class__
         for action in self.pre_save_actions.get(model, ()):
@@ -98,7 +120,7 @@ class BaseRemapper:
             action(self, *values)
 
     def run_post_save(self, *values: Model):
-        if not values:
+        if not values:  # pragma: no coverage
             return
         model = values[0].__class__
         for action in self.post_save_actions.get(model, ()):
@@ -162,7 +184,7 @@ class BaseRemapper:
             mod_name = mod
         elif mod is None:
             mod_name = None
-        else:
+        else:  # pragma: no coverage
             raise TypeError(f"{mod} must be a string or a Django model")
         if self.logging_enabled:
             self.log.append(LogAction(act=act, mod=mod_name, msg=msg))
@@ -170,6 +192,24 @@ class BaseRemapper:
             if not mod_name:
                 mod_name = "GLOBAL"
             print(mod_name.ljust(40), act.ljust(30), msg)
+
+    def find_deferrable_self_fk(self):
+        for model in self.data:
+            for f in get_fk_fields(model):
+                if f.related_model == model:
+                    if f.null:
+                        self.add_log(
+                            mod=model,
+                            act="find_deferrable_self_fk",
+                            msg=f"Adding field {f.name} to defer_via_null",
+                        )
+                        self.add_defer_via_null(model, f.name)
+                    else:
+                        self.add_log(
+                            mod=model,
+                            act="find_deferrable_self_fk",
+                            msg=f"Self relation {f.name} is not nullable, will probably cause problems",
+                        )
 
     def sort(self) -> list[Type[Model]]:
         """
@@ -225,6 +265,11 @@ class BaseRemapper:
         else:
             tracked_class[old_pk] = obj
 
+    def remove_val_and_defer(self, fieldname: str, inst: Model):
+        curr_val = getattr(inst, f"{fieldname}_id")
+        if curr_val:
+            self.deferred_map[inst.__class__][fieldname].append((inst, curr_val))
+
     def get_remap_obj_from_field(self, inst: Model, field: Field) -> Optional[Model]:
         """
         Get object from another models foreign key field
@@ -276,11 +321,11 @@ class BaseRemapper:
         )
 
     def report_remapping(self, *values: Model) -> set[Model]:
-        if not values:
+        if not values:  # pragma: no coverage
             return set()
         model = values[0].__class__
         assert issubclass(model, Model)
-        if model not in self.data:
+        if model not in self.data:  # pragma: no coverage
             return set()
         not_remapped = self.remapped_objs[model] - set(values)
         if not_remapped:
@@ -290,6 +335,36 @@ class BaseRemapper:
                 msg=f"{len(not_remapped)} item(s) were never used for remapping.",
             )
         return not_remapped
+
+    def remap_deferred(self):
+        # deferred_map: dict[type[Model], dict[str, list[tuple[Model, int]]]]
+        for model, fielddata in self.deferred_map.items():
+            for fieldname, data in fielddata.items():
+                if data:
+                    msg = f"Remapping: {len(data)}"
+                else:
+                    msg = "No items"
+                self.add_log(
+                    mod=model,
+                    act=f"remap_deferred:{fieldname}",
+                    msg=msg,
+                )
+                f = model._meta.get_field(fieldname)
+                for inst, old_tgt_pk in data:
+                    related_obj = self.get_remap_obj(f.related_model, old_tgt_pk)
+                    setattr(inst, fieldname, related_obj)
+
+    def save_deferred(self):
+        # FIXME: May cause duplicate saves, restructure later
+        for model, fielddata in self.deferred_map.items():
+            for fieldname, data in fielddata.items():
+                self.add_log(
+                    mod=model,
+                    act=f"save_deferred:{fieldname}",
+                    msg=f"Resaving: {len(data)} item(s) for field",
+                )
+                for inst, _ in data:
+                    Model.save_base(inst, raw=True)
 
     @staticmethod
     def callable_name(_callable):
@@ -305,7 +380,7 @@ class BaseRemapper:
 
         >>> BaseRemapper.callable_name(BaseRemapper().report_remapping)
         'dolly.core.BaseRemapper:report_remapping'
-       """
+        """
         if isinstance(_callable, type):
             return f"{_callable.__module__}.{_callable.__name__}"
         elif ismethod(_callable):
@@ -343,9 +418,12 @@ class LiveCloner(BaseRemapper):
         """
         self.prepare_clone()
         self.sort()
+        self.find_deferrable_self_fk()
         for model, values in self.data.items():
             self.add_log(mod=model, act="clone", msg=f"{len(values)} items")
             self.clone(*values)
+        self.remap_deferred()
+        self.save_deferred()
         for model, values in self.data.items():
             self.remap_m2ms(*values)
         self.run_pre_commit_hooks()
@@ -442,12 +520,17 @@ class LiveCloner(BaseRemapper):
         clear_fields = set()
         skipped_fields = set()
         clear_fieldnames = self.clear_model_attrs.get(model, ())
+        deferred_via_null_names = self.defer_via_null.get(model, ())
+        deferred_via_null_fields = set()
         for f in get_fk_fields(model):
             if f.name in clear_fieldnames:
                 clear_fields.add(f)
                 continue  # Should not be remapped
             if f.related_model in self.data:
-                remap_fields.add(f)
+                if f.name in deferred_via_null_names:
+                    deferred_via_null_fields.add(f)
+                else:
+                    remap_fields.add(f)
             else:
                 skipped_fields.add(f)
         if skipped_fields:
@@ -468,6 +551,12 @@ class LiveCloner(BaseRemapper):
                 act="remap_fks:remap",
                 msg=f"{','.join(f.name for f in remap_fields)}",
             )
+        if deferred_via_null_fields:
+            self.add_log(
+                mod=model,
+                act="remap_fks:deferred_via_null",
+                msg=f"{','.join(f.name for f in deferred_via_null_fields)}",
+            )
         for inst in values:
             for f in remap_fields:
                 remap_to = self.get_remap_obj_from_field(inst, f)
@@ -476,6 +565,8 @@ class LiveCloner(BaseRemapper):
             for f in clear_fields:
                 # May cause not nullable, so it's not usable in all cases
                 setattr(inst, f.name, None)
+            for f in deferred_via_null_fields:
+                self.remove_val_and_defer(f.name, inst)
 
     def remap_m2ms(self, *values: Model):
         """
@@ -548,10 +639,13 @@ class Importer(BaseRemapper):
     def __call__(self):
         self.find_existing()
         self.sort()
+        self.find_deferrable_self_fk()
         self.prepare_import()
         for model, values in self.data.items():
             self.add_log(mod=model, act="save_new", msg=f"{len(values)} items")
             self.save_new(*values)
+        self.remap_deferred()
+        self.save_deferred()
         for values in self.data.values():
             self.remap_m2ms(*values)
         for values in self.data.values():
@@ -689,11 +783,16 @@ class Importer(BaseRemapper):
         remap_fields = set()
         maintained_fields = set()
         clear_fields = set()
+        deferred_via_null_names = self.defer_via_null.get(model, ())
+        deferred_via_null_fields = set()
         for f in get_fk_fields(model, exclude_ptr=False):
             if f.name in self.clear_model_attrs.get(model, set()):
                 clear_fields.add(f)
             elif f.related_model in self.tracked_data:
-                remap_fields.add(f)
+                if f.name in deferred_via_null_names:
+                    deferred_via_null_fields.add(f)
+                else:
+                    remap_fields.add(f)
             else:
                 maintained_fields.add(f)
         if maintained_fields:
@@ -714,6 +813,12 @@ class Importer(BaseRemapper):
                 act="remap_fks:clear",
                 msg=f"{','.join(f.name for f in clear_fields)}",
             )
+        if deferred_via_null_fields:
+            self.add_log(
+                mod=model,
+                act="remap_fks:defer_via_null",
+                msg=f"{','.join(deferred_via_null_names)}",
+            )
         for deserialized in values:
             for f in remap_fields:
                 remap_to = self.get_remap_obj_from_field(deserialized.object, f)
@@ -727,6 +832,8 @@ class Importer(BaseRemapper):
                         self.pointer_assigned_objs.add(deserialized.object)
             for f in clear_fields:
                 setattr(deserialized.object, f.name, None)
+            for f in deferred_via_null_fields:
+                self.remove_val_and_defer(f.name, deserialized.object)
 
     def remap_m2ms(self, *values: DeserializedObject):
         """

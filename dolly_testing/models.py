@@ -79,6 +79,13 @@ class MeetingGroup(_Default):
         ContentType, on_delete=models.SET_NULL, null=True, blank=True
     )
     object_id = models.PositiveIntegerField(null=True, blank=True)
+    delegated_to = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        related_name="delegated_from",
+        on_delete=models.RESTRICT,
+    )
 
 
 class AgendaItem(_DefaultContent):

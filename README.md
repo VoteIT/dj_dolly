@@ -28,7 +28,7 @@ There's no dependency to VoteIT and you don't need to understand how VoteIT work
 
 ```python
 
->>> from dolly_testing.models import Organisation, Meeting
+>>> from dolly_testing.models import Organisation, Meeting, MeetingGroup
 
 ``` 
 
@@ -87,8 +87,6 @@ references in memory though, they're not persistent in any way.
 
 >>> from dolly.core import LiveCloner
 >>> from django.db import transaction
-
-
 >>> initial_meeting_pk = meeting.pk
 >>> cloner = LiveCloner(data=data)
 >>> with transaction.atomic(durable=True):

@@ -8,6 +8,7 @@ from dolly.exceptions import CyclicOrMissingDependencyError
 from dolly_testing.models import A
 from dolly_testing.models import B
 from dolly_testing.models import Meeting
+from dolly_testing.models import MeetingGroup
 from dolly_testing.models import Organisation
 from dolly_testing.models import Proposal
 from dolly_testing.models import SingletonFlag
@@ -117,3 +118,19 @@ class BaseRemapperTests(TestCase):
         self.assertGreater(
             sorted_models.index(SingletonFlag), sorted_models.index(Proposal)
         )
+
+    def test_add_defer_via_null(self):
+        remapper = self._mk_one()
+        remapper.add_defer_via_null(MeetingGroup, "delegated_to")
+        self.assertEqual({MeetingGroup: {"delegated_to": []}}, remapper.deferred_map)
+        self.assertEqual({MeetingGroup: {"delegated_to"}}, remapper.defer_via_null)
+
+    def test_add_defer_via_null_bad_name(self):
+        remapper = self._mk_one()
+        with self.assertRaises(TypeError):
+            remapper.add_defer_via_null(MeetingGroup, "404")
+
+    def test_add_defer_via_null_not_nullable(self):
+        remapper = self._mk_one()
+        with self.assertRaises(TypeError):
+            remapper.add_defer_via_null(MeetingGroup, "meeting")

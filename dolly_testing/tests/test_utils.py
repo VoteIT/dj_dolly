@@ -73,7 +73,7 @@ class UtilTests(TestCase):
         result = get_data_id_struct(collected_data)
         self.assertEqual({1}, result.pop(models.Organisation))
         self.assertEqual({1}, result.pop(models.Meeting))
-        self.assertEqual({1}, result.pop(models.MeetingGroup))
+        self.assertEqual({1, 2}, result.pop(models.MeetingGroup))
         self.assertEqual({1, 2}, result.pop(models.AgendaItem))
         self.assertEqual({1, 2}, result.pop(models.Proposal))
         self.assertEqual({2}, result.pop(models.DiffProposal))

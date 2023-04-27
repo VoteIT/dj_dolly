@@ -122,7 +122,7 @@ def get_fk_fields(model: Type[models.Model], exclude_ptr=True) -> set[models.Fie
 
     >>> from dolly_testing.models import MeetingGroup
     >>> sorted(f.name for f in get_fk_fields(MeetingGroup))
-    ['content_type', 'likes_content', 'meeting']
+    ['content_type', 'delegated_to', 'likes_content', 'meeting']
 
     >>> from dolly_testing.models import DiffProposal
     >>> sorted(f.name for f in get_fk_fields(DiffProposal))
@@ -279,10 +279,10 @@ def get_dependencies(
     ['AgendaItem', 'Meeting', 'MeetingGroup', 'Proposal', 'SingletonFlag', 'Text', 'User']
 
     >>> sorted(f.__name__ for f in get_dependencies(MeetingGroup))
-    ['ContentType', 'Meeting']
+    ['ContentType', 'Meeting', 'MeetingGroup']
 
     >>> sorted(f.__name__ for f in get_dependencies(MeetingGroup, ignore={Meeting}))
-    ['ContentType']
+    ['ContentType', 'MeetingGroup']
 
     >>> sorted(f.__name__ for f in get_dependencies(A))
     ['B']
@@ -324,6 +324,10 @@ def topological_sort(source: list[tuple[Type[models.Model], set[Type[models.Mode
     pending = [
         (name, set(deps)) for name, deps in source
     ]  # copy deps so we can modify set in-place
+    # Remove any relations to self since we can't sort on it.
+    for name, deps in pending:
+        if name in deps:
+            deps.remove(name)
     emitted = []
     while pending:
         next_pending = []

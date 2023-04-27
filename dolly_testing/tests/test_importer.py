@@ -143,7 +143,9 @@ class ImporterTests(TestCase):
         self.assertNotIn(original_tag, last_prop.tags.all())
         self.assertEqual(1, last_prop.tags.count())
         # Users kept
-        meeting_groups = MeetingGroup.objects.all().order_by("pk")
+        meeting_groups = MeetingGroup.objects.filter(name__contains="wailers").order_by(
+            "pk"
+        )
         first_mg = meeting_groups.first()
         last_mg = meeting_groups.last()
         self.assertEqual(
@@ -164,3 +166,14 @@ class ImporterTests(TestCase):
         importer()
         org = list(importer.data[Organisation])[0]
         self.assertEqual("Whatever", org.name)
+
+    def test_self_relation_via_null(self):
+        existing_groups = MeetingGroup.objects.all()
+        existing_group_pks = {x.pk for x in existing_groups}
+        importer = self._mk_one()
+        importer.add_auto_find_existing(User, "pk")
+        importer()
+        new_groups = MeetingGroup.objects.exclude(pk__in=existing_group_pks)
+        without_rel = new_groups.filter(delegated_to__isnull=True).first()
+        with_rel = new_groups.filter(delegated_to__isnull=False).first()
+        self.assertEqual(with_rel.delegated_to, without_rel)
