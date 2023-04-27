@@ -175,6 +175,8 @@ class BaseRemapper:
         assert issubclass(model, Model)
         for m in values:
             assert issubclass(m, Model)
+            # Since we added explicit dependency, models must exist in data for sort to work
+            _ = self.data[m]
         self.explicit_dependency[model].update(values)
 
     def add_log(self, *, mod: Optional[Type[Model]], act: str, msg: str):
