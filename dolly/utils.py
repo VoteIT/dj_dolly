@@ -212,7 +212,7 @@ def get_all_related_models(
     """
     results: set[Type[models.Model]] = set()
     results.update(items)
-    for (m, deps) in get_all_dependencies(*items, ignore_attrs=ignore_attrs):
+    for m, deps in get_all_dependencies(*items, ignore_attrs=ignore_attrs):
         results.update(deps)
     return results
 
@@ -397,7 +397,7 @@ def safe_clone(root_obj, exclude_models=(), cloner: Optional[LiveCloner] = None)
     data = get_model_formatted_dict(collector.get_collected_objects())
     second_collected_ids = get_data_id_struct(data)
     extra_found = {}
-    for (m, vals) in second_collected_ids.items():
+    for m, vals in second_collected_ids.items():
         found = vals - initial_collected_ids.get(m, set())
         if found:
             extra_found[m] = found

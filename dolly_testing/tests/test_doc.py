@@ -6,6 +6,7 @@ from django.test import TestCase
 from dolly_testing.testing import options
 import dolly
 
+
 class DocTests(TestCase):
     fixtures = ["dolly_testing"]
 
@@ -20,6 +21,7 @@ class DocTests(TestCase):
 def load_tests(loader, tests, pattern):
     load_doctests(tests, dolly)
     return tests
+
 
 def load_doctests(tests, package) -> None:
     """

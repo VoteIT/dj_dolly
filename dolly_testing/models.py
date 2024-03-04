@@ -43,15 +43,13 @@ class _Role(_Default):
 
     @property
     @abstractmethod
-    def context(self):
-        ...
+    def context(self): ...
 
     class Meta:
         abstract = True
 
 
-class Tag(_Default):
-    ...
+class Tag(_Default): ...
 
 
 class OrganisationRole(_Role):
@@ -118,21 +116,17 @@ class NullableRelated(_Default):
     )
 
 
-class SingletonFlag(_Default):
-    ...
+class SingletonFlag(_Default): ...
 
 
 # Test linear multi inheritance - django only seems to be able to copy 1 leve deep!
-class Grandparent(_Default):
-    ...
+class Grandparent(_Default): ...
 
 
-class Parent(Grandparent):
-    ...
+class Parent(Grandparent): ...
 
 
-class Child(Parent):
-    ...
+class Child(Parent): ...
 
 
 # Multi inheritance tree django example - this doesn't work with clone at all?

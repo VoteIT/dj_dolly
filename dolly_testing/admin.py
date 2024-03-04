@@ -33,7 +33,7 @@ class MeetingAdmin(admin.ModelAdmin):
 
 
 @admin.register(MeetingGroup, AgendaItem, Proposal, DiffProposal)
-class MeetingContextAdmin( admin.ModelAdmin):
+class MeetingContextAdmin(admin.ModelAdmin):
     list_display = (
         "__str__",
         "meeting",

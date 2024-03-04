@@ -228,10 +228,10 @@ class BaseRemapper:
         )
         # Inject explicit
         to_handle = self.explicit_dependency.copy()
-        for (m, deps) in dependencies:
+        for m, deps in dependencies:
             if m in to_handle:
                 deps.update(to_handle.pop(m))
-        for (m, explicit) in to_handle.items():
+        for m, explicit in to_handle.items():
             dependencies.append((m, explicit))
         order = list(topological_sort(dependencies))
         self.add_log(
