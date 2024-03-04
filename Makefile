@@ -24,3 +24,12 @@ cover:
 
 notebook:
 	./manage.py shell_plus --notebook
+
+build:
+	python -m build .
+
+btest:
+	rm -r dist
+	python -m build .
+	cd dist && tar xvfz dj_dolly*.tar.gz
+
