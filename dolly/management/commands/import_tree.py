@@ -6,7 +6,6 @@ import traceback
 from collections import defaultdict
 
 from django.apps import apps
-from django.core import serializers
 from django.core.management import BaseCommand
 from django.db import transaction
 
@@ -21,11 +20,6 @@ class Command(BaseCommand):
             "fn",
             help="Filename, relative to current working directory",
         )
-        # parser.add_argument(
-        #     "--database",
-        #     default=DEFAULT_DB_ALIAS,
-        #     help='Nominates a specific database to load fixtures into. Defaults to the "default" database.',
-        # )
         parser.add_argument(
             "--dry-run",
             default=False,
@@ -83,7 +77,6 @@ class Command(BaseCommand):
                 if dry_run:
                     transaction.set_rollback(True)
         except Exception as exc:
-            # file=sys.stdout
             traceback.print_exc()
         if not quiet:
             print("=" * 80)

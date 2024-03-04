@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sys
 from collections import defaultdict
 
 from django.apps import apps
@@ -24,11 +23,6 @@ class Command(BaseCommand):
             "pk",
             help="Primary key",
         )
-        # parser.add_argument(
-        #     "--database",
-        #     default=DEFAULT_DB_ALIAS,
-        #     help='Nominates a specific database to load fixtures into. Defaults to the "default" database.',
-        # )
         parser.add_argument(
             "--dry-run",
             default=False,
