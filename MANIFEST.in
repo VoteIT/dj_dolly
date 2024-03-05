@@ -1,5 +1,8 @@
 include LICENSE
 include README.md
-recursive-include dolly
-prune dolly_testing
+recursive-exclude __pycache__ *
+recursive-exclude tests *
 prune project
+prune dolly_testing
+recursive-include dolly *.html *.txt *.rst
+global-exclude *~ *.py[cod] *.so
