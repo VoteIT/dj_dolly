@@ -6,4 +6,4 @@ prune project
 prune **/__pycache__
 prune **/tests
 prune **/.DS_Store
-global-exclude *.py[cod]
+global-exclude *.py[cod] *.so *~

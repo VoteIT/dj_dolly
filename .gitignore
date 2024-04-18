@@ -8,4 +8,6 @@
 venv
 volumes
 dist
+build
+.tox
 dolly_testing/migrations
